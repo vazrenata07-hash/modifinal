@@ -1,0 +1,57 @@
+CONSULTAR PIX — PROGRAMA LOCAL
+
+COMO USAR NO WINDOWS
+1. Instale o Python 3.9 ou mais recente: https://www.python.org/downloads/
+   Na instalacao, marque "Add Python to PATH" e mantenha Tcl/Tk selecionado.
+   Se ja tem Python com Tkinter, pule esta etapa.
+2. Extraia todos os arquivos deste ZIP para uma pasta.
+3. De dois cliques em Iniciar.bat.
+4. Cole seu token de PRODUCAO do Asaas.
+5. Escolha o tipo, digite uma unica chave Pix e clique em Consultar.
+
+O token so precisa ser colado uma vez enquanto a janela estiver aberta.
+O programa nao salva o token, as consultas ou os resultados no computador.
+Nao precisa instalar pacotes com pip. Nao precisa de servidor ou navegador.
+Precisa de internet para consultar o Asaas.
+
+COMO CONSEGUIR O TOKEN
+Na sua conta Asaas aprovada: menu do usuario > Integracoes > Chaves API.
+Use a chave de API de producao. Uma chave Pix NAO e o token da API.
+Documentacao: https://central.ajuda.asaas.com/hc/pt-br/articles/33618186066331-Como-gerar-uma-nova-chave-de-API-no-Asaas
+
+TIPOS DE CHAVE
+CPF / CNPJ: pode colar com ou sem pontuacao.
+CNPJ: aceita o formato numerico ou alfanumerico.
+Telefone: DDD + celular, 11 digitos. O programa tambem aceita +55.
+E-mail: informe o endereco completo.
+Aleatoria: copie a chave inteira, incluindo os hifens.
+CPF e telefone podem ter 11 digitos. Escolha o tipo correto no campo Tipo.
+
+MAC E LINUX
+Mac: instale o Python do site oficial com Tkinter e abra Iniciar.command.
+Se nao abrir com dois cliques, execute na pasta extraida:
+  python3 consulta_pix.py
+Linux: o mesmo comando funciona. Em Ubuntu/Debian, se faltar Tkinter:
+  sudo apt install python3 python3-tk
+Se o Mac indicar erro de certificado, execute "Install Certificates.command"
+na pasta da sua instalacao oficial do Python em Aplicativos.
+
+O QUE O PROGRAMA FAZ
+Envia uma consulta GET diretamente para:
+https://api.asaas.com/v3/pix/addressKeys/external
+Exibe os dados devolvidos pelo Asaas. Nao executa pagamentos ou transferencias.
+O botao fica bloqueado enquanto a consulta esta em andamento.
+Nao faz consultas automaticas, em lote ou novas tentativas sozinho.
+Um erro de rede, de token ou de permissao nao significa chave inexistente.
+Nao verifica se o recebedor e confiavel; apenas mostra o retorno da API.
+
+LIMITES E CUSTO
+O Asaas documenta limite de 5 consultas por minuto, alem da cota de fichas.
+Se o limite for atingido, aguarde e clique novamente quando quiser.
+O programa nao tem mensalidade. As condicoes de acesso e possiveis tarifas
+da API dependem do Asaas; gratuidade por consulta nao foi confirmada.
+https://docs.asaas.com/docs/consultar-chave-pix
+
+VALIDACAO
+O cliente foi testado com respostas simuladas de sucesso e erro.
+Nao foi realizada consulta real: nao foi fornecido um token de producao.
