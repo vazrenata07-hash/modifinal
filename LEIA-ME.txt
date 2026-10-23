@@ -23,6 +23,16 @@ Os horarios sao gravados mesmo sem salvar o token; isso nao grava o token digita
 Nao precisa instalar pacotes com pip. Nao precisa de servidor ou navegador.
 Precisa de internet para consultar o Asaas.
 
+GERAR UM EXE NO WINDOWS
+1. Com Python instalado, abra Gerar_EXE.bat com dois cliques.
+2. Aguarde a instalacao automatica do PyInstaller e a geracao.
+3. Abra ConsultarPix.exe, criado na mesma pasta.
+O gerador precisa de internet na primeira vez. O EXE pronto nao exige Python.
+O cache.ini continua separado ao lado do EXE, preservando token e contador.
+Feche ConsultarPix.exe antes de gerar outra versao.
+Os arquivos auxiliares ficam em .gerador-exe/. Nao compartilhe seu cache.ini.
+O gerador deve rodar no Windows; nao foi executado no ambiente de desenvolvimento.
+
 COMO CONSEGUIR O TOKEN
 Na sua conta Asaas aprovada: menu do usuario > Integracoes > Chaves API.
 Use a chave de API de producao. Uma chave Pix NAO e o token da API.

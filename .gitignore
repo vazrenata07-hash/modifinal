@@ -17,3 +17,8 @@ android/.gradle/
 android/local.properties
 *.jks
 *.keystore
+.gerador-exe/
+ConsultarPix.exe
+*.spec
+/build/
+/dist/

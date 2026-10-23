@@ -32,6 +32,23 @@ instale pelo [site oficial](https://www.python.org/downloads/), marque
 **Add Python to PATH** e mantenha o componente Tcl/Tk selecionado.
 Não precisa instalar pacotes com `pip`.
 
+## Gerar um EXE no Windows
+
+1. Baixe e extraia o [ConsultaPix.zip](ConsultaPix.zip) atualizado.
+2. Com Python 3.9 ou superior instalado, abra **Gerar_EXE.bat** com dois cliques.
+3. Aguarde: o gerador prepara um ambiente separado e instala o PyInstaller automaticamente.
+4. Abra **ConsultarPix.exe**, criado na mesma pasta.
+
+A primeira geração precisa de internet para baixar o PyInstaller. O computador
+que usar o EXE pronto não precisa ter Python instalado; a consulta Pix continua
+precisando de internet. O gerador roda no Windows e o EXE acompanha a arquitetura
+do Python usado para gerá-lo.
+
+O `cache.ini` permanece separado, na pasta do EXE, preservando o token salvo e
+o contador existente. O gerador não embute esse arquivo no executável. Feche
+`ConsultarPix.exe` antes de gerar uma nova versão. Os arquivos auxiliares da
+geração ficam em `.gerador-exe/`.
+
 ## Conseguir o token
 
 Na sua conta Asaas aprovada, abra **Menu do usuário → Integrações → Chaves API**.
@@ -81,6 +98,7 @@ não foi confirmada. [Documentação oficial](https://docs.asaas.com/docs/consul
 
 Os testes usam respostas simuladas de sucesso, falhas HTTP, rede e formato de entrada.
 Não foi feita consulta real com um token de produção.
+O gerador de EXE é entregue para execução no seu Windows; não foi executado neste ambiente.
 
 ```sh
 python3 -m unittest discover -s tests -v
