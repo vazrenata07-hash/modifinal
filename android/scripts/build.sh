@@ -9,7 +9,14 @@ cd "$(dirname "$0")/.."
 : "${PIX_KEYSTORE_PASSWORD:?Defina PIX_KEYSTORE_PASSWORD para assinar o APK}"
 PIX_KEY_ALIAS="${PIX_KEY_ALIAS:-consultapix}"
 BUILD_ROOT="$PWD/build"
-mkdir -p "$BUILD_ROOT/classes" "$BUILD_ROOT/dex" "$BUILD_ROOT/generated" "$BUILD_ROOT/tests"
+python3 - <<'PY'
+from pathlib import Path
+import shutil
+for name in ('classes', 'dex', 'generated', 'assets'):
+    path = Path('build') / name
+    if path.exists(): shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+PY
 
 "$ANDROID_BUILD_TOOLS/aapt2" compile --dir app/src/main/res -o "$BUILD_ROOT/resources.zip"
 "$ANDROID_BUILD_TOOLS/aapt2" link -I "$ANDROID_JAR" --manifest app/src/main/AndroidManifest.xml \
@@ -27,7 +34,7 @@ with zipfile.ZipFile('build/classes.jar', 'w', zipfile.ZIP_DEFLATED) as archive:
         archive.write(path, path.relative_to(root).as_posix())
 PY
 
-"$ANDROID_BUILD_TOOLS/d8" --lib "$ANDROID_JAR" --min-api 28 --output "$BUILD_ROOT/dex" "$BUILD_ROOT/classes.jar"
+"$ANDROID_BUILD_TOOLS/d8" --release --lib "$ANDROID_JAR" --min-api 28 --output "$BUILD_ROOT/dex" "$BUILD_ROOT/classes.jar"
 python3 - <<'PY'
 from pathlib import Path
 import zipfile

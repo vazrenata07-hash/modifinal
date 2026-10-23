@@ -1,12 +1,17 @@
 package br.com.consultapix;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.net.Uri;
+import android.provider.OpenableColumns;
 import android.text.InputType;
 import android.text.method.PasswordTransformationMethod;
 import android.view.Gravity;
@@ -34,6 +39,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import javax.net.ssl.SSLException;
@@ -45,17 +51,22 @@ public final class MainActivity extends Activity {
     private static final int GREEN = Color.rgb(24, 113, 90);
     private static final int SOFT_GREEN = Color.rgb(237, 247, 239);
     private static final String ENDPOINT = "https://api.asaas.com/v3/pix/addressKeys/external";
+    private static final int PICK_LIST = 41;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Handler clock = new Handler(Looper.getMainLooper());
     private EditText tokenInput, keyInput;
     private Spinner typeInput;
-    private Button saveButton, queryButton;
+    private Button saveButton, queryButton, manualButton, listButton, importButton, selectLineButton;
     private TextView status, cooldown, resultText;
     private LinearLayout resultBox;
+    private LinearLayout listControls;
+    private TextView listSummary, selectedLine;
     private ProgressBar progress;
     private TokenStore tokenStore;
     private List<Long> queryHistory = new ArrayList<>();
-    private boolean busy, historyAvailable = true;
+    private boolean busy, importing, listMode, historyAvailable = true;
+    private ListImporter.Result importedList;
+    private int selectedIndex = -1;
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (isFinishing() || isDestroyed()) return;
@@ -180,6 +191,33 @@ public final class MainActivity extends Activity {
         });
         saveButton.setOnClickListener(view -> saveToken());
 
+        LinearLayout modes = new LinearLayout(this);
+        manualButton = button("Manual", true);
+        listButton = button("Lista", false);
+        modes.addView(manualButton, new LinearLayout.LayoutParams(0, dp(46), 1));
+        LinearLayout.LayoutParams listModeParams = new LinearLayout.LayoutParams(0, dp(46), 1);
+        listModeParams.leftMargin = dp(8);
+        modes.addView(listButton, listModeParams);
+        body.addView(modes, rowParams(22));
+        manualButton.setOnClickListener(view -> switchMode(false));
+        listButton.setOnClickListener(view -> switchMode(true));
+        listControls = new LinearLayout(this);
+        listControls.setOrientation(LinearLayout.VERTICAL);
+        listControls.setVisibility(View.GONE);
+        importButton = button("Importar TXT", false);
+        importButton.setOnClickListener(view -> pickList());
+        listControls.addView(importButton, rowParams(12));
+        listSummary = text("Importe um arquivo para identificar 11 dígitos por linha.", 13, MUTED, false);
+        listControls.addView(listSummary, rowParams(8));
+        selectLineButton = button("Selecionar linha", false);
+        selectLineButton.setEnabled(false);
+        selectLineButton.setOnClickListener(view -> chooseLine());
+        listControls.addView(selectLineButton, rowParams(10));
+        selectedLine = text("Nenhuma linha selecionada.", 13, MUTED, false);
+        listControls.addView(selectedLine, rowParams(8));
+        listControls.addView(text("Importar ou selecionar não consulta. Confira CPF ou Telefone no campo Tipo e toque em Consultar.", 12, MUTED, false), rowParams(6));
+        body.addView(listControls, rowParams(0));
+
         body.addView(text("Tipo de chave", 15, INK, true), rowParams(23));
         typeInput = new Spinner(this);
         ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, PixCore.TYPE_LABELS);
@@ -201,7 +239,7 @@ public final class MainActivity extends Activity {
             if (action == EditorInfo.IME_ACTION_SEARCH) { query(); return true; }
             return false;
         });
-        cooldown = text("Uma consulta a cada 30 segundos.", 12, MUTED, false);
+        cooldown = text("Uma consulta a cada 61 segundos.", 12, MUTED, false);
         body.addView(cooldown, rowParams(8));
         status = text("Pronto para consultar.", 13, MUTED, false);
         body.addView(status, rowParams(12));
@@ -224,8 +262,139 @@ public final class MainActivity extends Activity {
         outer.requestApplyInsets();
     }
 
+    private void switchMode(boolean useList) {
+        if (busy || importing) return;
+        listMode = useList;
+        listControls.setVisibility(useList ? View.VISIBLE : View.GONE);
+        keyInput.setEnabled(!useList);
+        manualButton.setBackground(background(useList ? Color.rgb(226, 236, 231) : GREEN, 0));
+        manualButton.setTextColor(useList ? GREEN : Color.WHITE);
+        listButton.setBackground(background(useList ? GREEN : Color.rgb(226, 236, 231), 0));
+        listButton.setTextColor(useList ? Color.WHITE : GREEN);
+        if (useList && importedList != null && selectedIndex >= 0)
+            keyInput.setText(importedList.items.get(selectedIndex).digits);
+        updateButton();
+    }
+
+    private void pickList() {
+        if (busy || importing) return;
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[]{"text/plain", "application/octet-stream"});
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        try { startActivityForResult(intent, PICK_LIST); }
+        catch (Exception unavailable) { status.setText("Não foi possível abrir o seletor de arquivos deste aparelho."); }
+    }
+
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != PICK_LIST || result != RESULT_OK || data == null || data.getData() == null) return;
+        if (busy || importing) return;
+        Uri uri = data.getData();
+        setImporting(true);
+        status.setText("Lendo arquivo local… Nenhuma consulta será enviada.");
+        status.setTextColor(MUTED);
+        worker.execute(() -> {
+            String name = "Arquivo importado";
+            ListImporter.Result parsed = null;
+            String failure = null;
+            try {
+                try (Cursor cursor = getContentResolver().query(uri,
+                        new String[]{OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE}, null, null, null)) {
+                    if (cursor != null && cursor.moveToFirst()) {
+                        int nameColumn = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                        if (nameColumn >= 0 && !cursor.isNull(nameColumn)) name = cursor.getString(nameColumn);
+                        int sizeColumn = cursor.getColumnIndex(OpenableColumns.SIZE);
+                        if (sizeColumn >= 0 && !cursor.isNull(sizeColumn) && cursor.getLong(sizeColumn) > ListImporter.MAX_TEXT_BYTES)
+                            throw new Exception("O arquivo TXT é maior que 8 MB. Divida-o em arquivos menores.");
+                    }
+                }
+                name = name.replaceAll("[\\x00-\\x1f]", " ");
+                if (name.length() > 180) name = name.substring(0, 180);
+                byte[] bytes = readLocalFile(uri);
+                String lower = name.toLowerCase(Locale.ROOT);
+                if (!lower.endsWith(".txt")) throw new Exception("Selecione um arquivo de texto com extensão .txt.");
+                String content = ListImporter.decode(bytes);
+                parsed = ListImporter.parse(content);
+                if (parsed.items.isEmpty()) throw new Exception("Nenhuma linha com um único número de 11 dígitos foi identificada. Linhas com mais de um candidato são ignoradas.");
+            } catch (OutOfMemoryError tooLarge) {
+                failure = "Não há memória suficiente para ler esse arquivo. Divida-o em arquivos menores.";
+            } catch (Exception error) {
+                failure = error.getMessage();
+                if (failure == null || failure.trim().isEmpty()) failure = "Não foi possível ler o arquivo selecionado.";
+                if (failure.length() > 400) failure = failure.substring(0, 400);
+            }
+            final ListImporter.Result list = parsed;
+            final String filename = name;
+            final String message = failure;
+            runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
+                if (message == null && list != null) {
+                    importedList = list;
+                    selectedIndex = -1;
+                    keyInput.setText("");
+                    listSummary.setText(filename + "\n" + list.items.size() + " linhas com 11 dígitos identificados.\n"
+                            + list.ambiguousLines + " linhas ambíguas ignoradas; " + list.ignoredLines + " sem candidato.");
+                    selectedLine.setText("Selecione a linha que deseja consultar.");
+                    status.setText("Arquivo importado. Selecione uma linha e toque em Consultar.");
+                    status.setTextColor(GREEN);
+                } else {
+                    status.setText(message == null ? "Não foi possível importar o arquivo." : message);
+                    status.setTextColor(Color.rgb(124, 79, 36));
+                }
+                setImporting(false);
+            });
+        });
+    }
+
+    private byte[] readLocalFile(Uri uri) throws Exception {
+        try (InputStream input = getContentResolver().openInputStream(uri);
+             ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            if (input == null) throw new Exception("Não foi possível abrir o arquivo selecionado.");
+            byte[] buffer = new byte[8192];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (output.size() + count > ListImporter.MAX_TEXT_BYTES)
+                    throw new Exception("O arquivo TXT é maior que 8 MB. Divida-o em arquivos menores.");
+                output.write(buffer, 0, count);
+            }
+            return output.toByteArray();
+        }
+    }
+
+    private void chooseLine() {
+        if (busy || importing || importedList == null || importedList.items.isEmpty()) return;
+        String[] labels = new String[importedList.items.size()];
+        for (int i = 0; i < labels.length; i++) labels[i] = importedList.items.get(i).label();
+        new AlertDialog.Builder(this).setTitle("11 dígitos identificados")
+                .setItems(labels, (dialog, index) -> {
+                    selectedIndex = index;
+                    ListImporter.Item item = importedList.items.get(index);
+                    keyInput.setText(item.digits);
+                    selectedLine.setText(item.label());
+                    status.setText("Linha selecionada. Confira o tipo e toque em Consultar.");
+                    status.setTextColor(MUTED);
+                    updateButton();
+                }).setNegativeButton("Fechar", null).show();
+    }
+
+    private void setImporting(boolean value) {
+        importing = value;
+        saveButton.setEnabled(!value);
+        tokenInput.setEnabled(!value);
+        keyInput.setEnabled(!value && !listMode);
+        typeInput.setEnabled(!value);
+        manualButton.setEnabled(!value);
+        listButton.setEnabled(!value);
+        importButton.setEnabled(!value);
+        selectLineButton.setEnabled(!value && importedList != null && !importedList.items.isEmpty());
+        progress.setVisibility(value ? View.VISIBLE : View.GONE);
+        updateButton();
+    }
+
     private void saveToken() {
-        if (busy) return;
+        if (busy || importing) return;
         String value = tokenInput.getText().toString().trim();
         try {
             if (!value.isEmpty()) value = PixCore.normalizeToken(value);
@@ -247,36 +416,45 @@ public final class MainActivity extends Activity {
     }
 
     private void updateButton() {
-        if (busy) {
+        if (busy || importing) {
             queryButton.setEnabled(false);
-            queryButton.setText("Consultando…");
+            queryButton.setText(importing ? "Importando…" : "Consultando…");
             return;
         }
         long remaining = PixCore.waitMillis(queryHistory, System.currentTimeMillis());
-        boolean available = historyAvailable && remaining == 0L;
+        boolean selected = !listMode || (importedList != null && selectedIndex >= 0 && selectedIndex < importedList.items.size());
+        boolean available = historyAvailable && remaining == 0L && selected;
         queryButton.setEnabled(available);
         queryButton.setAlpha(available ? 1f : 0.6f);
         queryButton.setText(!historyAvailable ? "Cache indisponível" : remaining > 0L ? "Aguarde " + PixCore.countdown(remaining) : "Consultar");
-        cooldown.setText(remaining > 0L ? "Próxima consulta em " + PixCore.countdown(remaining) + "." : "Uma consulta a cada 30 segundos.");
+        cooldown.setText(remaining > 0L ? "Próxima consulta em " + PixCore.countdown(remaining) + "." : "Uma consulta a cada 61 segundos.");
     }
 
     private void setBusy(boolean value) {
         busy = value;
         saveButton.setEnabled(!value);
         tokenInput.setEnabled(!value);
-        keyInput.setEnabled(!value);
+        keyInput.setEnabled(!value && !listMode);
         typeInput.setEnabled(!value);
+        manualButton.setEnabled(!value);
+        listButton.setEnabled(!value);
+        importButton.setEnabled(!value);
+        selectLineButton.setEnabled(!value && importedList != null && !importedList.items.isEmpty());
         progress.setVisibility(value ? View.VISIBLE : View.GONE);
         updateButton();
     }
 
     private void query() {
-        if (busy || !historyAvailable) return;
+        if (busy || importing || !historyAvailable) return;
+        if (listMode && (importedList == null || selectedIndex < 0 || selectedIndex >= importedList.items.size())) {
+            status.setText("Selecione uma linha da lista antes de consultar.");
+            return;
+        }
         final String token, key, type;
         try {
             token = PixCore.normalizeToken(tokenInput.getText().toString());
             type = PixCore.TYPES[typeInput.getSelectedItemPosition()];
-            key = PixCore.normalizeKey(type, keyInput.getText().toString());
+            key = PixCore.normalizeKey(type, listMode ? importedList.items.get(selectedIndex).digits : keyInput.getText().toString());
         } catch (PixCore.InputError error) {
             status.setText(error.getMessage());
             status.setTextColor(Color.rgb(153, 63, 42));
@@ -309,6 +487,11 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) return;
                 setBusy(false);
+                if (listMode && importedList != null && selectedIndex >= 0 && selectedIndex < importedList.items.size()) {
+                    ListImporter.Item item = importedList.items.get(selectedIndex);
+                    item.state = result.kind == 0 ? "Chave cadastrada" : result.kind == 1 ? "Sem Pix cadastrado" : "Consulta não concluída";
+                    selectedLine.setText(item.label());
+                }
                 resultText.setText(PixCore.sanitize(result.message, token));
                 if (result.kind == 1) {
                     resultBox.setBackground(background(SOFT_GREEN, Color.rgb(182, 216, 194)));
@@ -346,7 +529,7 @@ public final class MainActivity extends Activity {
             connection.setConnectTimeout(20000);
             connection.setReadTimeout(20000);
             connection.setRequestProperty("access_token", token);
-            connection.setRequestProperty("User-Agent", "ConsultaPixAndroid/1.5");
+            connection.setRequestProperty("User-Agent", "ConsultaPixAndroid/1.6");
             connection.setRequestProperty("Accept", "application/json");
             int http = connection.getResponseCode();
             InputStream stream = http >= 400 ? connection.getErrorStream() : connection.getInputStream();

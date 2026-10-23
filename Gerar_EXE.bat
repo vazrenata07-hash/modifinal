@@ -11,6 +11,7 @@ echo Na primeira vez, e preciso internet para baixar o PyInstaller.
 echo.
 
 if not exist "consulta_pix.py" goto falta_programa
+if not exist "lista_pix.py" goto falta_programa
 set "PIX_BUILD_DIR=%CD%\.gerador-exe"
 set "PIX_BUILD_PY=%PIX_BUILD_DIR%\Scripts\python.exe"
 if exist "%PIX_BUILD_PY%" goto preparar_pacotes
@@ -43,7 +44,7 @@ if errorlevel 1 goto erro_instalacao
 :gerar
 echo.
 echo Gerando o executavel. Aguarde...
-"%PIX_BUILD_PY%" -m PyInstaller --noconfirm --clean --onefile --windowed --name ConsultarPix --distpath "%CD%" --workpath "%PIX_BUILD_DIR%\build" --specpath "%PIX_BUILD_DIR%" "consulta_pix.py"
+"%PIX_BUILD_PY%" -m PyInstaller --noconfirm --clean --onefile --windowed --hidden-import lista_pix --name ConsultarPix --distpath "%CD%" --workpath "%PIX_BUILD_DIR%\build" --specpath "%PIX_BUILD_DIR%" "consulta_pix.py"
 if errorlevel 1 goto erro_geracao
 if not exist "ConsultarPix.exe" goto erro_geracao
 echo.
@@ -56,7 +57,7 @@ pause
 exit /b 0
 
 :falta_programa
-echo ERRO: consulta_pix.py nao esta nesta pasta.
+echo ERRO: faltam consulta_pix.py ou lista_pix.py nesta pasta.
 echo Extraia todos os arquivos do ConsultaPix.zip e abra Gerar_EXE.bat novamente.
 goto falha
 

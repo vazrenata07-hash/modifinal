@@ -11,7 +11,7 @@ public final class PixCore {
     public static final String[] TYPES = {"CPF", "CNPJ", "EMAIL", "PHONE", "EVP"};
     public static final String[] TYPE_LABELS = {"CPF", "CNPJ", "E-mail", "Telefone", "Aleatória"};
     public static final int MAX_RESPONSE = 262144;
-    public static final long WINDOW_MS = 30000L;
+    public static final long WINDOW_MS = 61000L;
 
     public static List<Long> recentQueries(List<Long> history, long now) {
         List<Long> recent = new ArrayList<>();

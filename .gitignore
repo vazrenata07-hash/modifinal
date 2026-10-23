@@ -18,6 +18,8 @@ android/local.properties
 *.jks
 *.keystore
 .gerador-exe/
+.consulta-pix-env/
+.consulta-pix-venv/
 ConsultarPix.exe
 *.spec
 /build/

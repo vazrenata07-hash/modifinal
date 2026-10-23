@@ -10,13 +10,31 @@ sem navegador e sem bibliotecas externas em tempo de execução.
 2. Cole o token de produção. Se quiser lembrá-lo neste aparelho, toque em **Salvar**.
 3. Selecione o tipo da chave, informe uma única chave Pix e toque em **Consultar**.
 
+### Lista local de TXT
+
+Toque em **Lista → Importar TXT** e escolha o arquivo no seletor do
+Android. A importação ocorre localmente e identifica um número de **11 dígitos por
+linha**, contíguo, como CPF pontuado ou telefone com DDD. Ela não verifica checksum
+nem confirma se o CPF existe. Linhas com mais de um candidato são ignoradas como
+ambíguas; sequências maiores, como CNPJ de 14 dígitos, não são recortadas.
+
+Depois toque em **Selecionar linha**, escolha a linha, confira **CPF ou Telefone**
+no campo Tipo e toque em **Consultar**. Só a linha selecionada é consultada por
+esse clique. Não há consulta automática, varredura ou envio em lote. Importar ou
+selecionar linhas não usa a API e não consome o intervalo local. O modo **Manual**
+continua disponível. A lista e os resultados ficam apenas na memória do aplicativo.
+
+TXT aceita UTF-8, UTF-8 com BOM, UTF-16 e Windows-1252/Latin-1. Limites de
+importação: texto de até 8 MB e até 10.000 linhas identificadas. Nenhum arquivo
+é enviado para o serviço. Os demais formatos não são importados.
+
 O arquivo `cache.ini` fica na pasta privada de dados do aplicativo. O token salvo é
 criptografado com AES-GCM e uma chave do Android Keystore. O botão **Salvar** é a
 única ação que grava ou substitui o token. Para esquecer o token, esvazie o campo e
 toque em **Salvar**. Isso preserva o contador de consultas.
 
-O programa permite **uma consulta a cada 30 segundos**. Cada envio bloqueia o botão por
-**30 segundos**, com contagem regressiva `MM:SS`. O histórico fica
+Os modos Manual e Lista compartilham **uma consulta a cada 61 segundos**. Cada envio
+bloqueia o botão por **61 segundos**, com contagem regressiva `MM:SS`. O histórico fica
 no mesmo arquivo INI e continua valendo depois de fechar/reabrir o aplicativo ou
 reiniciar o aparelho. Tentativas enviadas que retornam erro também contam; erros
 locais de preenchimento não contam. Esse limite local não garante ausência de
@@ -64,5 +82,6 @@ alinha e assina o APK.
   manutenção do intervalo depois de recarregar o histórico.
 - O manifesto declara API mínima 28 e o APK é alinhado e assinado pelas ferramentas Android.
 - Não foi realizado teste em aparelho físico/emulador nem consulta real com token.
-- O aplicativo só pede acesso à internet. Não solicita arquivos, contatos, câmera ou biometria.
+- A única permissão de manifesto é internet. A lista usa o seletor de arquivos do
+  Android para acessar só o documento escolhido, sem permissão geral de armazenamento.
 - Apenas consultas GET são implementadas; o aplicativo não realiza transferências.

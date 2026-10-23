@@ -3,6 +3,22 @@
 Programa simples para consultar **uma chave Pix por vez**, com versões para
 computador e Android. A consulta usa a API do Asaas, sem servidor próprio.
 
+## Manual e lista
+
+O modo **Manual** continua disponível. Na aba **Lista**, use **Abrir lista** para
+selecionar um arquivo TXT. O app procura um
+conjunto de 11 dígitos em cada linha, inclusive quando estiver acompanhado de
+nomes, separadores ou pontuação usual de CPF/telefone.
+
+Selecione uma linha identificada e clique em **Consultar** para enviar somente
+aquele número. Importar ou selecionar não realiza consultas. Linhas sem candidato
+ou com mais de um candidato diferente são ignoradas no resumo da importação.
+Reconhecer 11 dígitos não confirma CPF válido nem cadastro Pix. Escolha o tipo
+correto, como CPF ou Telefone.
+
+Os arquivos são lidos localmente e a lista não é salva
+automaticamente pelo programa.
+
 ## Android 9 ou superior
 
 Baixe [ConsultaPix-Android.apk](ConsultaPix-Android.apk) pelo botão
@@ -30,7 +46,7 @@ ao GitHub nem junto do programa. O arquivo está excluído pelo `.gitignore`.
 É necessário ter **Python 3.9 ou superior com Tkinter**. Se ainda não tiver,
 instale pelo [site oficial](https://www.python.org/downloads/), marque
 **Add Python to PATH** e mantenha o componente Tcl/Tk selecionado.
-Não precisa instalar pacotes com `pip`.
+O programa usa apenas os componentes padrão do Python.
 
 ## Gerar um EXE no Windows
 
@@ -59,10 +75,10 @@ Use um token de **produção**; este programa não usa o ambiente de testes.
 
 ## Mac e Linux
 
-Com Python e Tkinter instalados, execute na pasta do programa:
+Com Python e Tkinter instalados, execute o iniciador na pasta do programa:
 
 ```sh
-python3 consulta_pix.py
+sh Iniciar.command
 ```
 
 No Mac também há o iniciador `Iniciar.command`. No Ubuntu/Debian, se faltar Tkinter:
@@ -81,13 +97,14 @@ sudo apt install python3 python3-tk
 - Chave não cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
   **Sucesso, CPF sem Pix cadastrado.** O texto acompanha o tipo selecionado.
 - Mensagens de limite, tentativas excedidas, acesso negado e outros erros continuam separadas.
-- O botão permite uma consulta e bloqueia novos envios durante 30 segundos.
+- Os modos Manual e Lista compartilham uma consulta a cada 61 segundos
+  (1 minuto e 1 segundo).
   Depois de cada envio, mostra uma contagem regressiva até liberar uma nova consulta.
   Os horários são salvos localmente e continuam valendo ao fechar e reabrir o app.
 - Consultas enviadas contam mesmo quando retornam erro. Erros de preenchimento
   detectados antes do envio não consomem essa contagem local.
 - Salvar os horários não salva o token: para guardar o token, use **Salvar**.
-- Não realiza transferências, importação de listas, consultas automáticas ou novas tentativas sozinho.
+- Não realiza transferências, consultas automáticas ou novas tentativas sozinho.
 - Erros de rede, token e permissão não são tratados como prova de chave inexistente.
 
 O Asaas documenta até **5 consultas por minuto**, além de uma cota de fichas.

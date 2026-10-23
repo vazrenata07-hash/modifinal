@@ -16,18 +16,20 @@ Ele sera carregado automaticamente nas proximas aberturas.
 Esse arquivo contem o token em texto: mantenha-o privado e nao o compartilhe.
 O programa nao salva consultas ou resultados no computador.
 Para manter o limite mesmo ao fechar e reabrir, salva apenas os horarios de envio.
-E permitida uma consulta a cada 30 segundos; depois de cada envio o botao mostra
-a contagem regressiva de 30 segundos ate liberar uma nova consulta. Respostas de erro tambem
+Manual e Lista compartilham uma consulta a cada 61 segundos (1 minuto e 1 segundo).
+Depois de cada envio o botao mostra a contagem regressiva ate liberar nova consulta. Respostas de erro tambem
 contam quando houve envio. Erros de preenchimento antes do envio nao contam.
 Os horarios sao gravados mesmo sem salvar o token; isso nao grava o token digitado.
-Nao precisa instalar pacotes com pip. Nao precisa de servidor ou navegador.
+O programa usa apenas os componentes padrao do Python.
+Nao precisa de servidor ou navegador.
 Precisa de internet para consultar o Asaas.
 
 GERAR UM EXE NO WINDOWS
 1. Com Python instalado, abra Gerar_EXE.bat com dois cliques.
 2. Aguarde a instalacao automatica do PyInstaller e a geracao.
 3. Abra ConsultarPix.exe, criado na mesma pasta.
-O gerador precisa de internet na primeira vez. O EXE pronto nao exige Python.
+O gerador precisa de internet na primeira vez para instalar PyInstaller.
+O EXE pronto nao exige Python.
 O cache.ini continua separado ao lado do EXE, preservando token e contador.
 Feche ConsultarPix.exe antes de gerar outra versao.
 Os arquivos auxiliares ficam em .gerador-exe/. Nao compartilhe seu cache.ini.
@@ -37,6 +39,15 @@ COMO CONSEGUIR O TOKEN
 Na sua conta Asaas aprovada: menu do usuario > Integracoes > Chaves API.
 Use a chave de API de producao. Uma chave Pix NAO e o token da API.
 Documentacao: https://central.ajuda.asaas.com/hc/pt-br/articles/33618186066331-Como-gerar-uma-nova-chave-de-API-no-Asaas
+
+LISTAS TXT
+Abra a aba Lista e clique em Abrir lista. Selecione um arquivo TXT.
+Cada linha com um unico conjunto de 11 digitos sera identificada, inclusive CPF
+pontuado e telefone com DDD. Linhas vazias, sem candidato ou ambiguas sao ignoradas.
+Selecione uma linha e clique em Consultar para enviar somente aquele numero.
+Importar e selecionar nao fazem consultas e nao consomem o intervalo.
+O modo Manual continua disponivel; os dois modos compartilham o limite de 61 segundos.
+A importacao identifica o formato de 11 digitos, nao confirma CPF ou cadastro Pix.
 
 TIPOS DE CHAVE
 CPF / CNPJ: pode colar com ou sem pontuacao.
@@ -49,7 +60,7 @@ CPF e telefone podem ter 11 digitos. Escolha o tipo correto no campo Tipo.
 MAC E LINUX
 Mac: instale o Python do site oficial com Tkinter e abra Iniciar.command.
 Se nao abrir com dois cliques, execute na pasta extraida:
-  python3 consulta_pix.py
+  sh Iniciar.command
 Linux: o mesmo comando funciona. Em Ubuntu/Debian, se faltar Tkinter:
   sudo apt install python3 python3-tk
 Se o Mac indicar erro de certificado, execute "Install Certificates.command"

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Consulta manual de uma chave Pix. Python 3.9+, sem pip."""
+"""Consulta individual de chaves Pix, com entrada manual ou lista local."""
 
 import configparser
 import json
@@ -20,7 +20,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from contextlib import contextmanager
-from tkinter import ttk
+from tkinter import filedialog, ttk
+
+from lista_pix import ErroImportacaoLista, importar_lista
 
 
 ENDPOINT = "https://api.asaas.com/v3/pix/addressKeys/external"
@@ -30,7 +32,7 @@ MAX_RESPOSTA = 262144
 COR_SUCESSO_SUAVE = "#4d8268"
 FUNDO_SUCESSO_SUAVE = "#edf7ef"
 MAX_CONSULTAS = 1
-INTERVALO_CONSULTAS = 30
+INTERVALO_CONSULTAS = 61
 
 
 class ErroConsulta(Exception):
@@ -383,9 +385,13 @@ class Aplicativo:
         self.fila = queue.Queue()
         self.ocupado = False
         self.fechado = False
+        self.importando = False
+        self.fila_importacao = queue.Queue()
+        self.registros_lista = {}
+        self.item_em_consulta = None
         janela.title("Consultar Pix")
-        janela.geometry("650x690")
-        janela.minsize(520, 600)
+        janela.geometry("720x850")
+        janela.minsize(600, 760)
         janela.configure(bg="#f3f6f5")
         janela.protocol("WM_DELETE_WINDOW", self.fechar)
 
@@ -423,8 +429,15 @@ class Aplicativo:
         self.botao_salvar.grid(row=0, column=1, padx=(8, 0))
         ttk.Label(conteudo, text="Salvar guarda o token no cache.ini desta pasta.", style="Ajuda.TLabel").grid(row=4, column=0, sticky="w", pady=(0, 17))
 
-        linha = ttk.Frame(conteudo)
-        linha.grid(row=5, column=0, sticky="ew")
+        self.abas = ttk.Notebook(conteudo)
+        self.abas.grid(row=5, column=0, sticky="ew")
+        self.aba_manual = ttk.Frame(self.abas, padding=12)
+        self.aba_lista = ttk.Frame(self.abas, padding=12)
+        self.abas.add(self.aba_manual, text="Manual")
+        self.abas.add(self.aba_lista, text="Lista")
+        self.aba_manual.columnconfigure(0, weight=1)
+        linha = ttk.Frame(self.aba_manual)
+        linha.grid(row=0, column=0, sticky="ew")
         linha.columnconfigure(1, weight=1)
         ttk.Label(linha, text="Tipo").grid(row=0, column=0, sticky="w")
         ttk.Label(linha, text="Chave Pix").grid(row=0, column=1, sticky="w", padx=(12, 0))
@@ -433,6 +446,7 @@ class Aplicativo:
         self.tipo.grid(row=1, column=0, sticky="ew", pady=(5, 0))
         self.chave = ttk.Entry(linha)
         self.chave.grid(row=1, column=1, sticky="ew", padx=(12, 0), pady=(5, 0))
+        self.montar_aba_lista()
         self.botao = ttk.Button(conteudo, text="Consultar", style="Consultar.TButton", command=self.consultar)
         self.botao.grid(row=6, column=0, sticky="ew", pady=(18, 10))
         self.status = ttk.Label(conteudo, text="Pronto para consultar.", style="Ajuda.TLabel", wraplength=550)
@@ -465,7 +479,80 @@ class Aplicativo:
         else:
             self.token.focus_set()
         self.janela.after(100, self.receber_resultado)
+        self.janela.after(100, self.receber_importacao)
+        self.abas.bind("<<NotebookTabChanged>>", lambda evento: self.atualizar_limite(reagendar=False))
         self.atualizar_limite()
+
+    def montar_aba_lista(self):
+        self.aba_lista.columnconfigure(0, weight=1)
+        barra = ttk.Frame(self.aba_lista)
+        barra.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        self.botao_abrir_lista = ttk.Button(barra, text="Abrir TXT", command=self.abrir_lista)
+        self.botao_abrir_lista.pack(side="left")
+        ttk.Label(barra, text="Tipo").pack(side="left", padx=(15, 5))
+        self.tipo_lista = ttk.Combobox(barra, values=("CPF", "Telefone"), state="readonly", width=10)
+        self.tipo_lista.set("CPF")
+        self.tipo_lista.pack(side="left")
+        quadro = ttk.Frame(self.aba_lista)
+        quadro.grid(row=1, column=0, sticky="ew")
+        quadro.columnconfigure(0, weight=1)
+        self.lista = ttk.Treeview(quadro, columns=("linha", "numero", "resultado"), show="headings", selectmode="browse", height=5)
+        self.lista.heading("linha", text="Linha")
+        self.lista.heading("numero", text="11 dígitos identificados")
+        self.lista.heading("resultado", text="Resultado")
+        self.lista.column("linha", width=55, minwidth=45, stretch=False)
+        self.lista.column("numero", width=190, minwidth=145, stretch=False)
+        self.lista.column("resultado", width=220, minwidth=140)
+        self.lista.grid(row=0, column=0, sticky="ew")
+        rolagem = ttk.Scrollbar(quadro, orient="vertical", command=self.lista.yview)
+        rolagem.grid(row=0, column=1, sticky="ns")
+        self.lista.configure(yscrollcommand=rolagem.set)
+        self.resumo_lista = ttk.Label(self.aba_lista, text="Abra um arquivo, selecione uma linha e clique em Consultar.", style="Ajuda.TLabel", wraplength=600)
+        self.resumo_lista.grid(row=2, column=0, sticky="w", pady=(8, 0))
+
+    def modo_lista(self):
+        return hasattr(self, "abas") and self.abas.select() == str(self.aba_lista)
+
+    def abrir_lista(self):
+        if self.ocupado or self.importando:
+            return
+        caminho = filedialog.askopenfilename(title="Abrir lista TXT", filetypes=[("Arquivo TXT", "*.txt")])
+        if not caminho:
+            return
+        self.importando = True
+        self.botao_abrir_lista.configure(state="disabled")
+        self.resumo_lista.configure(text="Lendo o arquivo localmente…")
+        threading.Thread(target=self.executar_importacao, args=(caminho,), daemon=True).start()
+
+    def executar_importacao(self, caminho):
+        try:
+            self.fila_importacao.put((True, importar_lista(caminho)))
+        except ErroImportacaoLista as erro:
+            self.fila_importacao.put((False, str(erro)))
+        except Exception:
+            self.fila_importacao.put((False, "Não foi possível importar o arquivo. Confira o formato e tente novamente."))
+
+    def receber_importacao(self):
+        if self.fechado:
+            return
+        try:
+            sucesso, retorno = self.fila_importacao.get_nowait()
+        except queue.Empty:
+            pass
+        else:
+            self.importando = False
+            self.botao_abrir_lista.configure(state="disabled" if self.ocupado else "normal")
+            if sucesso:
+                self.lista.delete(*self.lista.get_children())
+                self.registros_lista.clear()
+                for indice, registro in enumerate(retorno.registros):
+                    item = f"linha_{indice}"
+                    self.registros_lista[item] = registro
+                    self.lista.insert("", "end", iid=item, values=(registro.linha, registro.numero, "Não consultado"))
+                self.resumo_lista.configure(text=f"{len(retorno.registros)} linhas identificadas. Ignoradas: {retorno.ambiguas} ambíguas e {retorno.sem_numero} sem conjunto de 11 dígitos. Selecione uma linha para consultar.")
+            else:
+                self.resumo_lista.configure(text=retorno)
+        self.janela.after(100, self.receber_importacao)
 
     def alternar_token(self):
         self.token.configure(show="" if self.mostrar_token.get() else "*")
@@ -487,14 +574,14 @@ class Aplicativo:
             try:
                 segundos = segundos_ate_liberar()
             except ErroConsulta as erro:
-                self.botao.configure(state="disabled", text="Consultar")
+                self.botao.configure(state="disabled", text="Consultar selecionado" if self.modo_lista() else "Consultar")
                 self.status.configure(text=str(erro), foreground="#a13d29")
             else:
                 if segundos:
                     minutos, resto = divmod(segundos, 60)
                     self.botao.configure(state="disabled", text=f"Consultar ({minutos:02d}:{resto:02d})")
                 else:
-                    self.botao.configure(state="normal", text="Consultar")
+                    self.botao.configure(state="normal", text="Consultar selecionado" if self.modo_lista() else "Consultar")
         if reagendar:
             self.janela.after(1000, self.atualizar_limite)
 
@@ -508,10 +595,21 @@ class Aplicativo:
     def consultar(self):
         if self.ocupado:
             return
-        tipo = TIPOS.get(self.tipo.get())
+        item_lista = None
         try:
             token = validar_token(self.token.get())
-            chave = normalizar_chave(tipo, self.chave.get())
+            if self.modo_lista():
+                if self.importando:
+                    raise ErroConsulta("Aguarde a importação do arquivo terminar antes de consultar uma linha.")
+                selecionados = self.lista.selection()
+                if not selecionados or selecionados[0] not in self.registros_lista:
+                    raise ErroConsulta("Selecione uma linha da lista para consultar.")
+                item_lista = selecionados[0]
+                tipo = TIPOS.get(self.tipo_lista.get())
+                chave = normalizar_chave(tipo, self.registros_lista[item_lista].numero)
+            else:
+                tipo = TIPOS.get(self.tipo.get())
+                chave = normalizar_chave(tipo, self.chave.get())
             registrar_consulta()
         except LimiteConsultas as erro:
             self.status.configure(text=str(erro), foreground="#775d2b")
@@ -523,6 +621,12 @@ class Aplicativo:
             self.atualizar_limite(reagendar=False)
             return
         self.ocupado = True
+        self.item_em_consulta = item_lista
+        if item_lista:
+            self.lista.set(item_lista, "resultado", "Consultando…")
+        if hasattr(self, "botao_abrir_lista"):
+            self.botao_abrir_lista.configure(state="disabled")
+            self.tipo_lista.configure(state="disabled")
         self.botao.configure(state="disabled", text="Consultando…")
         self.tipo.configure(state="disabled")
         self.chave.configure(state="disabled")
@@ -531,7 +635,7 @@ class Aplicativo:
         self.progresso.grid()
         self.progresso.start(12)
         self.status.configure(text="Consultando…", foreground="#526d66")
-        self.escrever(f"Consultando {self.tipo.get()}: {chave}")
+        self.escrever(f"Consultando {tipo}: {chave}")
         threading.Thread(target=self.executar, args=(token, tipo, chave), daemon=True).start()
 
     def executar(self, token, tipo, chave):
@@ -562,6 +666,9 @@ class Aplicativo:
             self.chave.configure(state="normal")
             self.token.configure(state="normal")
             self.botao_salvar.configure(state="normal")
+            if hasattr(self, "botao_abrir_lista"):
+                self.botao_abrir_lista.configure(state="disabled" if self.importando else "normal")
+                self.tipo_lista.configure(state="readonly")
             self.progresso.stop()
             self.progresso.grid_remove()
             sem_cadastro = resultado == "sem_cadastro"
@@ -569,6 +676,11 @@ class Aplicativo:
             self.escrever(texto, sem_cadastro=sem_cadastro, inconclusivo=inconclusivo)
             self.status.configure(text=texto if sem_cadastro else "Consulta inconclusiva. Veja os detalhes abaixo." if inconclusivo else "Consulta concluída." if resultado == "sucesso" else "Consulta não concluída. Veja o motivo abaixo.",
                                   foreground=COR_SUCESSO_SUAVE if sem_cadastro else "#775d2b" if inconclusivo else "#116b55" if resultado == "sucesso" else "#a13d29")
+            item_lista = getattr(self, "item_em_consulta", None)
+            if item_lista and item_lista in self.registros_lista:
+                rotulo = {"sucesso": "Dados recebidos", "sem_cadastro": "Sem Pix cadastrado", "inconclusivo": "Inconclusivo", "erro": "Erro na consulta"}.get(resultado, "Consulta concluída")
+                self.lista.set(item_lista, "resultado", rotulo)
+            self.item_em_consulta = None
             self.atualizar_limite(reagendar=False)
             self.chave.focus_set()
         self.janela.after(100, self.receber_resultado)
