@@ -201,7 +201,7 @@ public final class MainActivity extends Activity {
             if (action == EditorInfo.IME_ACTION_SEARCH) { query(); return true; }
             return false;
         });
-        cooldown = text("Até 2 consultas a cada 3 minutos.", 12, MUTED, false);
+        cooldown = text("Uma consulta por minuto.", 12, MUTED, false);
         body.addView(cooldown, rowParams(8));
         status = text("Pronto para consultar.", 13, MUTED, false);
         body.addView(status, rowParams(12));
@@ -257,7 +257,7 @@ public final class MainActivity extends Activity {
         queryButton.setEnabled(available);
         queryButton.setAlpha(available ? 1f : 0.6f);
         queryButton.setText(!historyAvailable ? "Cache indisponível" : remaining > 0L ? "Aguarde " + PixCore.countdown(remaining) : "Consultar");
-        cooldown.setText(remaining > 0L ? "Próxima consulta em " + PixCore.countdown(remaining) + "." : "Até 2 consultas a cada 3 minutos.");
+        cooldown.setText(remaining > 0L ? "Próxima consulta em " + PixCore.countdown(remaining) + "." : "Uma consulta por minuto.");
     }
 
     private void setBusy(boolean value) {
@@ -346,7 +346,7 @@ public final class MainActivity extends Activity {
             connection.setConnectTimeout(20000);
             connection.setReadTimeout(20000);
             connection.setRequestProperty("access_token", token);
-            connection.setRequestProperty("User-Agent", "ConsultaPixAndroid/1.1");
+            connection.setRequestProperty("User-Agent", "ConsultaPixAndroid/1.4");
             connection.setRequestProperty("Accept", "application/json");
             int http = connection.getResponseCode();
             InputStream stream = http >= 400 ? connection.getErrorStream() : connection.getInputStream();

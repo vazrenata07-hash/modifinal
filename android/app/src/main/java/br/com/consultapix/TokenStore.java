@@ -85,10 +85,17 @@ public final class TokenStore {
             if (timestamp <= 0) throw new Exception("Histórico inválido.");
             values.add(timestamp);
         }
+        // Older releases stored two timestamps. Keep the latest when upgrading.
+        if (values.size() > 1) {
+            long latest = java.util.Collections.max(values);
+            values.clear();
+            values.add(latest);
+        }
         return values;
     }
 
     public synchronized void saveHistory(List<Long> history) throws Exception {
+        if (history.size() > 1) throw new Exception("Histórico inválido.");
         Properties ini = readProperties();
         StringBuilder data = new StringBuilder();
         for (Long timestamp : history) {

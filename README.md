@@ -81,8 +81,8 @@ sudo apt install python3 python3-tk
 - Chave não cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
   **Sucesso, CPF sem Pix cadastrado.** O texto acompanha o tipo selecionado.
 - Mensagens de limite, tentativas excedidas, acesso negado e outros erros continuam separadas.
-- O botão permite até duas consultas em uma janela móvel de 180 segundos (3 minutos).
-  Depois da segunda, mostra uma contagem regressiva até liberar uma nova consulta.
+- O botão permite uma consulta e bloqueia novos envios durante 60 segundos (1 minuto).
+  Depois de cada envio, mostra uma contagem regressiva até liberar uma nova consulta.
   Os horários são salvos localmente e continuam valendo ao fechar e reabrir o app.
 - Consultas enviadas contam mesmo quando retornam erro. Erros de preenchimento
   detectados antes do envio não consomem essa contagem local.
