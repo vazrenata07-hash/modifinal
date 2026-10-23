@@ -249,15 +249,15 @@ class LimitePersistenteTests(unittest.TestCase):
             registrar_consulta(arquivo, agora=1000)
             self.assertEqual(segundos_ate_liberar(arquivo, agora=1001), 0)
             registrar_consulta(arquivo, agora=1010)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 110)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 170)
             with self.assertRaises(LimiteConsultas) as contexto:
                 registrar_consulta(arquivo, agora=1011)
-            self.assertEqual(contexto.exception.segundos, 109)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1119.9), 1)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1120), 0)
-            registrar_consulta(arquivo, agora=1120)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1120), 10)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1130), 0)
+            self.assertEqual(contexto.exception.segundos, 169)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1179.9), 1)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1180), 0)
+            registrar_consulta(arquivo, agora=1180)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1180), 10)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1190), 0)
 
     def test_salvar_token_preserva_horarios_e_registrar_nao_salva_token(self):
         with tempfile.TemporaryDirectory() as pasta:
@@ -269,7 +269,7 @@ class LimitePersistenteTests(unittest.TestCase):
             registrar_consulta(arquivo, agora=1010)
             salvar_token("token-substituto", arquivo)
             self.assertEqual(carregar_token(arquivo), "token-substituto")
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 110)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 170)
 
     def test_horarios_sobrevivem_nova_leitura_e_reabertura(self):
         with tempfile.TemporaryDirectory() as pasta:
@@ -277,7 +277,7 @@ class LimitePersistenteTests(unittest.TestCase):
             registrar_consulta(arquivo, agora=2000)
             registrar_consulta(arquivo, agora=2001)
             original = arquivo.read_bytes()
-            self.assertEqual(segundos_ate_liberar(Path(str(arquivo)), agora=2030), 90)
+            self.assertEqual(segundos_ate_liberar(Path(str(arquivo)), agora=2030), 150)
             with self.assertRaises(LimiteConsultas):
                 registrar_consulta(arquivo, agora=2030)
             self.assertEqual(arquivo.read_bytes(), original)

@@ -48,17 +48,17 @@ public final class PixCoreTest {
         history.add(now);
         check(PixCore.waitMillis(history, now + 1000) == 0, "Segunda consulta liberada");
         history.add(now + 1000);
-        check(PixCore.waitMillis(history, now + 2000) == 118000L, "Terceira bloqueada");
-        check(PixCore.countdown(118000L).equals("01:58"), "Contagem regressiva");
+        check(PixCore.waitMillis(history, now + 2000) == 178000L, "Terceira bloqueada");
+        check(PixCore.countdown(178000L).equals("02:58"), "Contagem regressiva");
         check(PixCore.countdown(1L).equals("00:01"), "Arredonda segundos para cima");
         List<Long> reloaded = new ArrayList<>(history);
-        check(PixCore.waitMillis(reloaded, now + 30000) == 90000L, "Reabertura não zera histórico");
-        check(PixCore.waitMillis(history, now + 120000) == 0, "Limite exato da janela libera");
-        List<Long> recent = PixCore.recentQueries(history, now + 120000);
-        recent.add(now + 120000);
-        check(PixCore.waitMillis(recent, now + 120000) == 1000L, "Janela móvel impede terceira ainda presente");
-        check(PixCore.waitMillis(recent, now + 121000) == 0, "Próxima expiração libera");
-        check(PixCore.recentQueries(history, now + 240000).isEmpty(), "Histórico antigo expira");
+        check(PixCore.waitMillis(reloaded, now + 30000) == 150000L, "Reabertura não zera histórico");
+        check(PixCore.waitMillis(history, now + 180000) == 0, "Limite exato da janela libera");
+        List<Long> recent = PixCore.recentQueries(history, now + 180000);
+        recent.add(now + 180000);
+        check(PixCore.waitMillis(recent, now + 180000) == 1000L, "Janela móvel impede terceira ainda presente");
+        check(PixCore.waitMillis(recent, now + 181000) == 0, "Próxima expiração libera");
+        check(PixCore.recentQueries(history, now + 360000).isEmpty(), "Histórico antigo expira");
         check(PixCore.waitMillis(history, now - 1000) > 0, "Relógio regressivo não libera imediatamente");
         System.out.println("PixCoreTest: " + checks + " verificações passaram.");
     }

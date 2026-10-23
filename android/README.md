@@ -15,7 +15,7 @@ criptografado com AES-GCM e uma chave do Android Keystore. O botão **Salvar** �
 única ação que grava ou substitui o token. Para esquecer o token, esvazie o campo e
 toque em **Salvar**. Isso preserva o contador de consultas.
 
-O programa permite no máximo **duas consultas em uma janela móvel de dois minutos**.
+O programa permite no máximo **duas consultas em uma janela móvel de três minutos**.
 Depois da segunda, o botão mostra uma contagem regressiva `MM:SS`. O histórico fica
 no mesmo arquivo INI e continua valendo depois de fechar/reabrir o aplicativo ou
 reiniciar o aparelho. Tentativas enviadas que retornam erro também contam; erros
