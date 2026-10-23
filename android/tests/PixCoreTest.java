@@ -32,7 +32,7 @@ public final class PixCoreTest {
         }
         check(PixCore.isExplicitMissing(400, error("Chave Pix não encontrada.")), "Ausência explícita 400");
         check(PixCore.isExplicitMissing(404, error("CPF não cadastrado como chave Pix.")), "Ausência explícita 404");
-        check(!PixCore.isExplicitMissing(404, new ArrayList<>()), "404 vazio é inconclusivo");
+        check(PixCore.isExplicitMissing(404, new ArrayList<>()), "404 vazio indica chave sem Pix");
         check(!PixCore.isExplicitMissing(404, error("Endpoint não encontrado.")), "Endpoint inexistente");
         check(!PixCore.isExplicitMissing(400, error("CPF inválido.")), "CPF inválido não confirma ausência");
         check(!PixCore.isExplicitMissing(400, Collections.singletonList(new PixCore.ApiError("pix_key_not_found", ""))), "Código inventado não basta");

@@ -153,12 +153,11 @@ class ConsultaPixTests(unittest.TestCase):
         for status in (401, 403, 429, 500):
             self.assertFalse(resposta_sem_cadastro(status, {"errors": [{"description": "Chave Pix não encontrada."}]}))
 
-    def test_http404_vazio_e_inconclusivo(self):
+    def test_http404_vazio_e_sem_cadastro_neste_fluxo(self):
         erro = urllib.error.HTTPError("https://api.asaas.com", 404, "Not Found", {}, io.BytesIO(b""))
-        with self.assertRaises(ConsultaInconclusiva) as contexto:
+        with self.assertRaises(ConsultaSemCadastro) as contexto:
             consultar_asaas("token-ficticio", "CPF", "12345678900", Mock(side_effect=erro))
-        self.assertIn("Não foi possível confirmar", str(contexto.exception))
-        self.assertNotIn("sem Pix cadastrado", str(contexto.exception))
+        self.assertEqual("Sucesso, CPF sem Pix cadastrado.", str(contexto.exception))
 
     def test_worker_separa_resultado_confirmado_erro_e_inconclusivo(self):
         app = Aplicativo.__new__(Aplicativo)

@@ -92,7 +92,7 @@ public final class PixCore {
 
     public static boolean isExplicitMissing(int http, List<ApiError> errors) {
         if (http != 400 && http != 404) return false;
-        if (errors == null || errors.isEmpty()) return false;
+        if (errors == null || errors.isEmpty()) return http == 404;
         for (ApiError error : errors) {
             String text = fold(error.code + " " + error.description);
             if (text.matches("(?s).*(limite|excedid|excedeu|tentativas|muitas consultas|many requests|rate.limit|token|fichas|bloquead|restric|unauthorized|forbidden|permiss|autoriz|acesso|indispon|unavail|erro do servidor|erro interno|nao foi possivel|fraud|excess|cota|quota|esgot|denied|nao permit|segur).*"))

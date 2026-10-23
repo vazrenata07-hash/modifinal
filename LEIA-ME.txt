@@ -62,8 +62,9 @@ Exibe os dados devolvidos pelo Asaas. Nao executa pagamentos ou transferencias.
 O botao fica bloqueado enquanto a consulta esta em andamento.
 Nao faz consultas automaticas, em lote ou novas tentativas sozinho.
 Um erro de rede, de token ou de permissao nao significa chave inexistente.
-Confirmacoes explicitas de chave nao cadastrada aparecem em verde suave.
-HTTP 404 sem detalhes aparece como inconclusivo: nao confirma CPF sem Pix.
+Chave nao cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
+Sucesso, CPF sem Pix cadastrado. O texto acompanha o tipo selecionado.
+Mensagens de limite, tentativas excedidas e acesso negado continuam separadas.
 Nao verifica se o recebedor e confiavel; apenas mostra o retorno da API.
 
 VERSAO ANDROID

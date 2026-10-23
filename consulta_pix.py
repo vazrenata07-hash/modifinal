@@ -38,7 +38,7 @@ class ErroConsulta(Exception):
 
 
 class ConsultaSemCadastro(ErroConsulta):
-    """A resposta do serviço confirmou ausência de cadastro para a chave."""
+    """Resultado sem cadastro, incluindo o HTTP 404 sem detalhes deste fluxo."""
 
     def __init__(self, tipo):
         self.tipo = tipo
@@ -215,12 +215,15 @@ def normalizar_texto_erro(valor):
 
 
 def resposta_sem_cadastro(status, dados):
-    """Não confunda HTTP 400/404 genéricos com ausência de uma chave Pix."""
+    """Neste fluxo, 404 sem detalhes é sem cadastro; limites têm prioridade."""
     if status not in (400, 404) or not isinstance(dados, dict):
         return False
     erros = dados.get("errors")
+    if not erros and any(dados.get(campo) for campo in ("code", "description", "message")):
+        erros = [{"code": dados.get("code", ""),
+                  "description": dados.get("description") or dados.get("message", "")}]
     if not isinstance(erros, list) or not erros:
-        return False
+        return status == 404 and not erros and not dados.get("error")
     confirmado = False
     for erro in erros:
         if not isinstance(erro, dict):

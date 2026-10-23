@@ -22,10 +22,10 @@ reiniciar o aparelho. Tentativas enviadas que retornam erro também contam; erro
 locais de preenchimento não contam. Esse limite local não garante ausência de
 restrições adicionais impostas pelo serviço.
 
-Somente uma resposta que confirme explicitamente a ausência da chave mostra a
-mensagem verde suave “Sucesso, CPF sem Pix cadastrado.” (ou o tipo correspondente).
-HTTP 404 vazio, CPF inválido, limite excedido, erro de token e falhas de acesso são
-resultados diferentes e não aparecem como ausência confirmada.
+Uma resposta que confirme explicitamente a ausência da chave ou HTTP 404 sem
+detalhes mostra a mensagem verde suave “Sucesso, CPF sem Pix cadastrado.” (ou o
+tipo correspondente). CPF inválido, limite excedido, erro de token, falhas de
+acesso e HTTP 404 com descrição de endpoint inexistente continuam separados.
 
 ## Compilar
 

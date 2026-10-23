@@ -78,8 +78,9 @@ sudo apt install python3 python3-tk
 - Consulta diretamente `GET https://api.asaas.com/v3/pix/addressKeys/external`.
 - Exibe os dados recebidos do Asaas, incluindo titular e instituição quando disponíveis.
 - O token pode ser salvo pelo botão **Salvar**. Consultas e resultados não são gravados.
-- Respostas que confirmam explicitamente chave não cadastrada aparecem em verde suave.
-- HTTP 404 sem detalhes é mostrado como inconclusivo: o código isolado não confirma ausência de Pix.
+- Chave não cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
+  **Sucesso, CPF sem Pix cadastrado.** O texto acompanha o tipo selecionado.
+- Mensagens de limite, tentativas excedidas, acesso negado e outros erros continuam separadas.
 - O botão permite até duas consultas em uma janela móvel de 120 segundos.
   Depois da segunda, mostra uma contagem regressiva até liberar uma nova consulta.
   Os horários são salvos localmente e continuam valendo ao fechar e reabrir o app.
