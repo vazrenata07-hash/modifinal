@@ -242,21 +242,21 @@ class CacheTokenTests(unittest.TestCase):
 
 
 class LimitePersistenteTests(unittest.TestCase):
-    def test_uma_consulta_por_minuto_e_contagem_regressiva(self):
+    def test_uma_consulta_a_cada_trinta_segundos_e_contagem_regressiva(self):
         with tempfile.TemporaryDirectory() as pasta:
             arquivo = Path(pasta) / "cache.ini"
             self.assertEqual(segundos_ate_liberar(arquivo, agora=1000), 0)
             registrar_consulta(arquivo, agora=1000)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1001), 59)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 50)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1001), 29)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1010), 20)
             with self.assertRaises(LimiteConsultas) as contexto:
                 registrar_consulta(arquivo, agora=1011)
-            self.assertEqual(contexto.exception.segundos, 49)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1059.9), 1)
+            self.assertEqual(contexto.exception.segundos, 19)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1029.9), 1)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1030), 0)
+            registrar_consulta(arquivo, agora=1030)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1030), 30)
             self.assertEqual(segundos_ate_liberar(arquivo, agora=1060), 0)
-            registrar_consulta(arquivo, agora=1060)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1060), 60)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1120), 0)
 
     def test_salvar_token_preserva_horarios_e_registrar_nao_salva_token(self):
         with tempfile.TemporaryDirectory() as pasta:
@@ -265,19 +265,19 @@ class LimitePersistenteTests(unittest.TestCase):
             self.assertEqual(carregar_token(arquivo), "")
             self.assertNotIn("[consulta_pix]", arquivo.read_text(encoding="utf-8"))
             salvar_token("token-salvo", arquivo)
-            registrar_consulta(arquivo, agora=1060)
+            registrar_consulta(arquivo, agora=1030)
             salvar_token("token-substituto", arquivo)
             self.assertEqual(carregar_token(arquivo), "token-substituto")
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1060), 60)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1030), 30)
 
     def test_horarios_sobrevivem_nova_leitura_e_reabertura(self):
         with tempfile.TemporaryDirectory() as pasta:
             arquivo = Path(pasta) / "cache.ini"
             registrar_consulta(arquivo, agora=2000)
             original = arquivo.read_bytes()
-            self.assertEqual(segundos_ate_liberar(Path(str(arquivo)), agora=2030), 30)
+            self.assertEqual(segundos_ate_liberar(Path(str(arquivo)), agora=2010), 20)
             with self.assertRaises(LimiteConsultas):
-                registrar_consulta(arquivo, agora=2030)
+                registrar_consulta(arquivo, agora=2010)
             self.assertEqual(arquivo.read_bytes(), original)
 
     def test_historico_invalido_falha_sem_apagar_o_cache(self):
@@ -296,7 +296,7 @@ class LimitePersistenteTests(unittest.TestCase):
             registrar_consulta(arquivo, agora=1000)
             with bloquear_cache(arquivo), self.assertRaises(ErroConsulta):
                 registrar_consulta(arquivo, agora=1001)
-            self.assertEqual(segundos_ate_liberar(arquivo, agora=1001), 59)
+            self.assertEqual(segundos_ate_liberar(arquivo, agora=1001), 29)
 
     @staticmethod
     def app_para_consulta():

@@ -46,18 +46,18 @@ public final class PixCoreTest {
         List<Long> history = new ArrayList<>();
         check(PixCore.waitMillis(history, now) == 0, "Primeira consulta liberada");
         history.add(now);
-        check(PixCore.waitMillis(history, now + 1000) == 59000L, "Segunda consulta bloqueada");
-        check(PixCore.waitMillis(history, now + 2000) == 58000L, "Continua bloqueada");
-        check(PixCore.countdown(58000L).equals("00:58"), "Contagem regressiva");
+        check(PixCore.waitMillis(history, now + 1000) == 29000L, "Segunda consulta bloqueada");
+        check(PixCore.waitMillis(history, now + 2000) == 28000L, "Continua bloqueada");
+        check(PixCore.countdown(28000L).equals("00:28"), "Contagem regressiva");
         check(PixCore.countdown(1L).equals("00:01"), "Arredonda segundos para cima");
         List<Long> reloaded = new ArrayList<>(history);
-        check(PixCore.waitMillis(reloaded, now + 30000) == 30000L, "Reabertura não zera histórico");
-        check(PixCore.waitMillis(history, now + 60000) == 0, "Limite exato da janela libera");
-        List<Long> recent = PixCore.recentQueries(history, now + 60000);
-        recent.add(now + 60000);
-        check(PixCore.waitMillis(recent, now + 60000) == 60000L, "Novo envio reinicia os 60 segundos");
-        check(PixCore.waitMillis(recent, now + 120000) == 0, "Próxima expiração libera");
-        check(PixCore.recentQueries(history, now + 180000).isEmpty(), "Histórico antigo expira");
+        check(PixCore.waitMillis(reloaded, now + 15000) == 15000L, "Reabertura não zera histórico");
+        check(PixCore.waitMillis(history, now + 30000) == 0, "Limite exato da janela libera");
+        List<Long> recent = PixCore.recentQueries(history, now + 30000);
+        recent.add(now + 30000);
+        check(PixCore.waitMillis(recent, now + 30000) == 30000L, "Novo envio reinicia os 30 segundos");
+        check(PixCore.waitMillis(recent, now + 60000) == 0, "Próxima expiração libera");
+        check(PixCore.recentQueries(history, now + 90000).isEmpty(), "Histórico antigo expira");
         check(PixCore.waitMillis(history, now - 1000) > 0, "Relógio regressivo não libera imediatamente");
         System.out.println("PixCoreTest: " + checks + " verificações passaram.");
     }
