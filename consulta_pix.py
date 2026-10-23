@@ -36,6 +36,7 @@ COR_SUCESSO_SUAVE = "#4d8268"
 FUNDO_SUCESSO_SUAVE = "#edf7ef"
 MAX_CONSULTAS = 1
 INTERVALO_CONSULTAS = 61
+FORMATO_SAIDA = "cpf_sem_pix_sucesso_v1"
 
 
 class ErroConsulta(Exception):
@@ -229,9 +230,27 @@ def carregar_saida_associada(origem):
         saida = Path(dados["saida"])
         if not isinstance(dados["saida"], str) or saida.resolve() == Path(origem).resolve():
             raise ValueError
-        return saida
+        formato = dados.get("formato")
     except (ValueError, TypeError, KeyError):
         raise ErroConsulta("A associação do TXT com o resultado no cache.ini é inválida. Confira o arquivo antes de continuar.") from None
+    try:
+        if not saida.exists():
+            return saida
+    except OSError:
+        raise ErroConsulta("Não foi possível acessar o resultado anterior. O arquivo foi preservado; confira as permissões.") from None
+    if formato == FORMATO_SAIDA:
+        ler_cpfs_saida_limpa(saida)
+        return saida
+    if formato not in (None, "", "cpf_sem_pix_v1"):
+        raise ErroConsulta("O formato do resultado anterior não é reconhecido. O arquivo foi preservado; confira-o antes de continuar.")
+    cpfs, ja_formatado = recuperar_cpfs_legados(saida)
+    if ja_formatado:
+        salvar_saida_associada(origem, saida)
+        return saida
+    nova_saida = criar_saida_resultados(origem)
+    acrescentar_saida_resultados(nova_saida, cpfs)
+    salvar_saida_associada(origem, nova_saida)
+    return nova_saida
 
 
 def salvar_saida_associada(origem, saida):
@@ -240,7 +259,7 @@ def salvar_saida_associada(origem, saida):
         configuracao = ler_configuracao(destino)
         if not configuracao.has_section("listas"):
             configuracao.add_section("listas")
-        dados = {"origem": str(Path(origem).resolve()), "saida": str(Path(saida).resolve())}
+        dados = {"origem": str(Path(origem).resolve()), "saida": str(Path(saida).resolve()), "formato": FORMATO_SAIDA}
         configuracao.set("listas", chave_associacao_lista(origem), json.dumps(dados, ensure_ascii=False))
         gravar_configuracao(configuracao, destino)
 
@@ -253,10 +272,6 @@ def criar_saida_resultados(origem):
     try:
         descritor = os.open(str(destino), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(descritor, "w", encoding="utf-8", newline="\n") as arquivo:
-            arquivo.write("Consultar Pix — resultados da lista\n")
-            arquivo.write("Criado em: " + datetime.now().astimezone().isoformat(timespec="seconds") + "\n")
-            arquivo.write("Origem: " + str(Path(origem).resolve()) + "\n")
-            arquivo.write("=" * 60 + "\n\n")
             arquivo.flush()
             os.fsync(arquivo.fileno())
     except OSError:
@@ -264,10 +279,66 @@ def criar_saida_resultados(origem):
     return destino
 
 
-def acrescentar_saida_resultados(caminho, linha, chave, tipo, status, texto):
-    bloco = ("Hora: " + datetime.now().astimezone().isoformat(timespec="seconds")
-             + f"\nLinha original: {linha}\nChave: {chave}\nTipo: {tipo}\nStatus: {status}\n\n"
-             + texto + "\n\n" + "-" * 60 + "\n\n")
+def ler_texto_resultado(caminho):
+    try:
+        return Path(caminho).read_text(encoding="utf-8-sig").replace("\r\n", "\n")
+    except (OSError, UnicodeError):
+        raise ErroConsulta("Não foi possível ler o resultado anterior. O arquivo foi preservado; confira-o antes de continuar.") from None
+
+
+def ler_cpfs_saida_limpa(caminho):
+    linhas = ler_texto_resultado(caminho).splitlines()
+    if any(not re.fullmatch(r"[0-9]{11} sucesso", linha) for linha in linhas):
+        raise ErroConsulta("O TXT de saída contém um formato diferente de CPF seguido de sucesso. A lista foi pausada para preservar o arquivo.")
+    return [linha[:11] for linha in linhas]
+
+
+def recuperar_cpfs_legados(caminho):
+    texto = ler_texto_resultado(caminho)
+    linhas = texto.splitlines()
+    if all(re.fullmatch(r"[0-9]{11}(?: sucesso)?", linha) for linha in linhas):
+        return [linha[:11] for linha in linhas], all(linha.endswith(" sucesso") for linha in linhas)
+    separador_cabecalho = "\n" + "=" * 60 + "\n\n"
+    partes = texto.split(separador_cabecalho, 1)
+    if len(partes) != 2 or not re.fullmatch(r"Consultar Pix — resultados da lista\nCriado em: [^\n]+\nOrigem: [^\n]+", partes[0]):
+        raise ErroConsulta("O resultado anterior não corresponde ao relatório conhecido. Ele foi preservado; a lista não será iniciada.")
+    corpo = partes[1]
+    separador = "\n\n" + "-" * 60 + "\n\n"
+    if corpo and not corpo.endswith(separador):
+        raise ErroConsulta("O relatório anterior está incompleto. Ele foi preservado; confira o arquivo antes de continuar.")
+    blocos = corpo.split(separador)[:-1] if corpo else []
+    cpfs = []
+    padrao = re.compile(r"Hora: (?P<hora>[^\n]+)\nLinha original: (?P<linha>[0-9]+)\nChave: (?P<chave>[^\n]+)\nTipo: (?P<tipo>[^\n]+)\nStatus: (?P<status>[^\n]+)\n\n(?P<texto>[\s\S]*)")
+    estados = {"Dados recebidos", "Sem Pix cadastrado", "Inconclusivo", "Erro na consulta", "Formato inválido", "Consulta concluída"}
+    for bloco in blocos:
+        registro = padrao.fullmatch(bloco)
+        if registro is None:
+            raise ErroConsulta("Há um registro ilegível no relatório anterior. O arquivo foi preservado; a lista não será iniciada.")
+        dados = registro.groupdict()
+        try:
+            datetime.fromisoformat(dados["hora"])
+            valido = int(dados["linha"]) > 0 and dados["tipo"] in TIPOS.values() and dados["status"] in estados
+        except ValueError:
+            valido = False
+        if not valido:
+            raise ErroConsulta("Há um registro fora do formato conhecido no relatório anterior. O arquivo foi preservado.")
+        if dados["tipo"] == "CPF" and dados["status"] == "Sem Pix cadastrado":
+            if not re.fullmatch(r"[0-9]{11}", dados["chave"]) or dados["texto"] != "Sucesso, CPF sem Pix cadastrado.":
+                raise ErroConsulta("Um resultado negativo do relatório anterior não pôde ser confirmado. O arquivo foi preservado.")
+            cpfs.append(dados["chave"])
+    return cpfs, False
+
+
+def acrescentar_saida_resultados(caminho, cpfs):
+    cpfs = tuple(cpfs)
+    if any(not re.fullmatch(r"[0-9]{11}", cpf) for cpf in cpfs):
+        raise ErroConsulta("O resultado não contém um CPF com 11 dígitos. A linha original não será removida.")
+    if not cpfs:
+        return
+    ler_cpfs_saida_limpa(caminho)
+    existente = ler_texto_resultado(caminho)
+    quebra = "\n" if existente and not existente.endswith("\n") else ""
+    bloco = quebra + "".join(cpf + " sucesso\n" for cpf in cpfs)
     try:
         descritor = os.open(str(caminho), os.O_WRONLY | os.O_APPEND)
         with os.fdopen(descritor, "w", encoding="utf-8", newline="\n") as arquivo:
@@ -465,6 +536,7 @@ class Aplicativo:
         self.origem_lista = None
         self.arquivo_resultados = None
         self.associacao_persistida = False
+        self.erro_saida_associada = None
         self.tipo_em_consulta = "CPF"
         self.pendencia_resultado = None
         janela.title("Consultar Pix")
@@ -591,7 +663,7 @@ class Aplicativo:
         self.resumo_lista.grid(row=2, column=0, sticky="w", pady=(8, 0))
         self.progresso_lista = ttk.Label(self.aba_lista, text="0/0 processadas", style="Ajuda.TLabel")
         self.progresso_lista.grid(row=3, column=0, sticky="w", pady=(4, 0))
-        self.rotulo_saida = ttk.Label(self.aba_lista, text="O TXT de resultados será criado ao iniciar a lista.", style="Ajuda.TLabel", wraplength=600)
+        self.rotulo_saida = ttk.Label(self.aba_lista, text="O TXT de CPFs sem Pix será criado ao iniciar a lista.", style="Ajuda.TLabel", wraplength=600)
         self.rotulo_saida.grid(row=4, column=0, sticky="w", pady=(4, 0))
 
     def modo_lista(self):
@@ -637,9 +709,11 @@ class Aplicativo:
                 self.origem_lista = retorno.origem
                 self.arquivo_resultados = None
                 self.associacao_persistida = False
+                self.erro_saida_associada = None
                 try:
                     anterior = carregar_saida_associada(self.origem_lista.caminho)
                 except ErroConsulta as erro:
+                    self.erro_saida_associada = str(erro)
                     self.rotulo_saida.configure(text=str(erro))
                 else:
                     if anterior is not None and anterior.is_file():
@@ -649,7 +723,7 @@ class Aplicativo:
                     elif anterior is not None:
                         self.rotulo_saida.configure(text="O resultado anterior não foi encontrado. Ao iniciar, será criado um novo TXT sem sobrescrever outros arquivos.")
                     else:
-                        self.rotulo_saida.configure(text="O TXT de resultados será criado ao iniciar a lista.")
+                        self.rotulo_saida.configure(text="O TXT de CPFs sem Pix será criado ao iniciar a lista.")
                 for indice, registro in enumerate(retorno.registros):
                     item = f"linha_{indice}"
                     self.registros_lista[item] = registro
@@ -662,6 +736,8 @@ class Aplicativo:
         self.janela.after(100, self.receber_importacao)
 
     def preparar_saida_lista(self):
+        if self.erro_saida_associada:
+            raise ErroConsulta(self.erro_saida_associada)
         if self.origem_lista is None:
             raise ErroConsulta("Importe o TXT original antes de consultar a lista.")
         try:
@@ -676,17 +752,15 @@ class Aplicativo:
             os.close(descritor)
         except OSError:
             raise ErroConsulta("O TXT de resultados não está disponível para continuação. Confira o arquivo ou reimporte o TXT original para criar uma nova saída.") from None
+        ler_cpfs_saida_limpa(self.arquivo_resultados)
         if not self.associacao_persistida:
             salvar_saida_associada(self.origem_lista.caminho, self.arquivo_resultados)
             self.associacao_persistida = True
-        self.rotulo_saida.configure(text="Resultados: " + str(self.arquivo_resultados))
+        self.rotulo_saida.configure(text="CPFs sem Pix: " + str(self.arquivo_resultados))
 
     def salvar_resultado_lista(self, item, tipo, status, texto):
         registro = self.registros_lista[item]
-        for segredo in (self.token_lista, self.token.get().strip()):
-            if segredo:
-                texto = texto.replace(segredo, "[token oculto]")
-        acrescentar_saida_resultados(self.arquivo_resultados, registro.linha, registro.numero, tipo, status, texto)
+        acrescentar_saida_resultados(self.arquivo_resultados, (registro.numero,))
 
     def concluir_resultado_pendente(self):
         pendencia = self.pendencia_resultado
@@ -694,7 +768,8 @@ class Aplicativo:
             return
         item = pendencia["item"]
         if not pendencia["saida_gravada"]:
-            self.salvar_resultado_lista(item, pendencia["tipo"], pendencia["status"], pendencia["texto"])
+            if pendencia["resultado"] == "sem_cadastro" and pendencia["tipo"] == "CPF":
+                self.salvar_resultado_lista(item, pendencia["tipo"], pendencia["status"], pendencia["texto"])
             pendencia["saida_gravada"] = True
         if pendencia["resultado"] in ("sucesso", "sem_cadastro"):
             remover_linha_consultada(self.origem_lista, self.registros_lista[item].linha)
