@@ -14,8 +14,8 @@ O token so precisa ser colado uma vez enquanto a janela estiver aberta.
 Ao clicar em Salvar, o token fica no arquivo cache.ini, na pasta do programa.
 Ele sera carregado automaticamente nas proximas aberturas.
 Esse arquivo contem o token em texto: mantenha-o privado e nao o compartilhe.
-O programa nao salva consultas ou resultados no computador.
-Para manter o limite mesmo ao fechar e reabrir, salva apenas os horarios de envio.
+A lista automatica do PC salva resultados em TXT; consultas manuais nao sao salvas.
+Para manter o limite mesmo ao fechar e reabrir, salva os horarios de envio.
 Manual e Lista compartilham uma consulta a cada 61 segundos (1 minuto e 1 segundo).
 Depois de cada envio o botao mostra a contagem regressiva ate liberar nova consulta. Respostas de erro tambem
 contam quando houve envio. Erros de preenchimento antes do envio nao contam.
@@ -41,10 +41,32 @@ Use a chave de API de producao. Uma chave Pix NAO e o token da API.
 Documentacao: https://central.ajuda.asaas.com/hc/pt-br/articles/33618186066331-Como-gerar-uma-nova-chave-de-API-no-Asaas
 
 LISTAS TXT
-Abra a aba Lista e clique em Abrir lista. Selecione um arquivo TXT.
+Abra a aba Lista e clique em Abrir TXT. Selecione um arquivo TXT.
 Cada linha com um unico conjunto de 11 digitos sera identificada, inclusive CPF
 pontuado e telefone com DDD. Linhas vazias, sem candidato ou ambiguas sao ignoradas.
-Selecione uma linha e clique em Consultar para enviar somente aquele numero.
+Escolha CPF ou Telefone e clique em Iniciar lista. As linhas serao consultadas
+automaticamente em ordem, uma por vez, respeitando 61 segundos entre envios.
+Se houver uma consulta manual recente, a lista aguarda o contador liberar.
+Use Pausar para interromper os proximos envios. Uma consulta ja enviada termina
+normalmente. Ao continuar, as linhas ja processadas nao sao repetidas.
+O progresso e o resultado de cada linha aparecem na lista.
+Erros de limite, acesso, token, conexao ou resposta inconclusiva pausam a lista
+para revisao, sem novas tentativas automaticas.
+Fechar interrompe a lista. Reabrir preserva o contador, mas nao inicia consultas.
+Ao iniciar, cria resultados_pix_*.txt na pasta do programa e mostra o caminho.
+Cada resposta e acrescentada imediatamente com horario, linha, tipo, chave,
+status e resposta completa. O arquivo parcial permanece ao pausar ou fechar.
+Retomar a mesma lista continua no mesmo arquivo; outra lista gera nova saida.
+Ao fechar e reabrir, importe novamente o mesmo TXT pendente e clique em Iniciar
+lista. Os novos resultados serao ACRESCENTADOS ao arquivo de saida anterior,
+sem apagar os resultados ja salvos. A associacao dos caminhos fica no cache.ini;
+o conteudo da lista nao e copiado para esse INI. Nao inicia sozinho ao reabrir.
+O token nunca e incluido no arquivo de resultados.
+Depois de salvar um resultado concluido, inclusive chave sem Pix, a respectiva
+linha e removida do TXT ORIGINAL. Linhas ignoradas ou com erro/inconclusivo ficam.
+Antes da primeira remocao e criada uma copia .bak ao lado do TXT original.
+As outras linhas e a codificacao sao preservadas. Se outro programa editar o
+arquivo durante a execucao, a lista pausa para reimportar sem sobrescrever a edicao.
 Importar e selecionar nao fazem consultas e nao consomem o intervalo.
 O modo Manual continua disponivel; os dois modos compartilham o limite de 61 segundos.
 A importacao identifica o formato de 11 digitos, nao confirma CPF ou cadastro Pix.
@@ -71,7 +93,8 @@ Envia uma consulta GET diretamente para:
 https://api.asaas.com/v3/pix/addressKeys/external
 Exibe os dados devolvidos pelo Asaas. Nao executa pagamentos ou transferencias.
 O botao fica bloqueado enquanto a consulta esta em andamento.
-Nao faz consultas automaticas, em lote ou novas tentativas sozinho.
+A lista avanca automaticamente apenas depois de clicar em Iniciar lista.
+Nao repete automaticamente tentativas que falharam.
 Um erro de rede, de token ou de permissao nao significa chave inexistente.
 Chave nao cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
 Sucesso, CPF sem Pix cadastrado. O texto acompanha o tipo selecionado.
@@ -82,6 +105,7 @@ VERSAO ANDROID
 Baixe ConsultaPix-Android.apk no repositorio do GitHub e instale no celular.
 Compativel com Android 9 ou superior. O botao Salvar grava o token na pasta
 privada do aplicativo, que o recarrega nas proximas aberturas.
+A lista automatica e exclusiva do PC. No Android, a consulta continua individual.
 
 LIMITES E CUSTO
 O Asaas documenta limite de 5 consultas por minuto, alem da cota de fichas.

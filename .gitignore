@@ -6,6 +6,8 @@ venv/
 .env.*
 !.env.example
 *.log
+resultados_pix_*.txt
+*.bak
 .DS_Store
 Thumbs.db
 cache.ini

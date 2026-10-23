@@ -5,19 +5,44 @@ computador e Android. A consulta usa a API do Asaas, sem servidor próprio.
 
 ## Manual e lista
 
-O modo **Manual** continua disponível. Na aba **Lista**, use **Abrir lista** para
+O modo **Manual** continua disponível. No PC, na aba **Lista**, use **Abrir TXT** para
 selecionar um arquivo TXT. O app procura um
 conjunto de 11 dígitos em cada linha, inclusive quando estiver acompanhado de
 nomes, separadores ou pontuação usual de CPF/telefone.
 
-Selecione uma linha identificada e clique em **Consultar** para enviar somente
-aquele número. Importar ou selecionar não realiza consultas. Linhas sem candidato
+Escolha CPF ou Telefone e clique em **Iniciar lista**. O PC consulta as linhas em
+ordem automaticamente, uma por vez, respeitando **61 segundos entre envios** e o
+intervalo de uma consulta manual anterior. O botão **Pausar** interrompe os próximos
+envios; uma consulta já enviada termina normalmente. Ao continuar, as linhas já
+processadas não são repetidas. A lista mostra o progresso e o resultado de cada linha.
+
+Erros de limite, acesso, token, conexão ou respostas inconclusivas pausam a lista
+para revisão, sem novas tentativas automáticas. Fechar o programa interrompe a
+lista; reabrir preserva o contador, mas não inicia consultas automaticamente.
+
+Ao iniciar a lista, o PC cria `resultados_pix_*.txt` na pasta do programa. A cada
+resposta, acrescenta horário, linha original, tipo, chave, status e resposta
+completa. O resultado parcial fica salvo ao pausar ou fechar. Retomar a mesma
+lista continua no mesmo arquivo; importar outra lista cria uma nova saída ao
+iniciar. O caminho aparece na interface. O token não é incluído na saída.
+Essa associação fica no `cache.ini`: ao fechar, reabrir e importar novamente o
+mesmo TXT pendente, **Iniciar lista** continua acrescentando ao arquivo de saída
+anterior, sem apagar seu conteúdo. A execução só continua após esse clique.
+
+Depois de salvar um resultado concluído, incluindo chave sem cadastro, o PC
+remove a respectiva linha do **TXT original**. Linhas ignoradas e consultas com
+erro ou resultado inconclusivo permanecem no arquivo. Antes da primeira remoção,
+é criada uma cópia de segurança `.bak` ao lado do TXT. A atualização preserva a
+codificação e as demais linhas. Se o arquivo for alterado por outro programa,
+a lista pausa para ser importada novamente, sem sobrescrever a edição externa.
+
+Importar ou selecionar não realiza consultas. Linhas sem candidato
 ou com mais de um candidato diferente são ignoradas no resumo da importação.
 Reconhecer 11 dígitos não confirma CPF válido nem cadastro Pix. Escolha o tipo
 correto, como CPF ou Telefone.
 
-Os arquivos são lidos localmente e a lista não é salva
-automaticamente pelo programa.
+A importação é local. O `cache.ini` guarda os caminhos para continuar a saída;
+o conteúdo da lista não é copiado para o INI.
 
 ## Android 9 ou superior
 
@@ -26,6 +51,8 @@ Baixe [ConsultaPix-Android.apk](ConsultaPix-Android.apk) pelo botão
 permita a instalação pelo navegador ou gerenciador de arquivos usado para baixar.
 Cole o token, toque em **Salvar**, escolha o tipo da chave e toque em **Consultar**.
 O APK atende Android 9 ou superior e não depende de serviços do Google.
+A lista no Android continua com seleção e consulta individual por toque; a
+execução automática está disponível apenas na versão para PC.
 
 ## Usar no Windows
 
@@ -93,7 +120,8 @@ sudo apt install python3 python3-tk
 - CPF e telefone podem ter 11 dígitos: selecione o tipo correto.
 - Consulta diretamente `GET https://api.asaas.com/v3/pix/addressKeys/external`.
 - Exibe os dados recebidos do Asaas, incluindo titular e instituição quando disponíveis.
-- O token pode ser salvo pelo botão **Salvar**. Consultas e resultados não são gravados.
+- O token pode ser salvo pelo botão **Salvar**. A lista automática do PC grava os
+  resultados em TXT; consultas manuais e resultados do Android não são gravados.
 - Chave não cadastrada e HTTP 404 sem detalhes deste fluxo aparecem em verde suave:
   **Sucesso, CPF sem Pix cadastrado.** O texto acompanha o tipo selecionado.
 - Mensagens de limite, tentativas excedidas, acesso negado e outros erros continuam separadas.
@@ -104,7 +132,8 @@ sudo apt install python3 python3-tk
 - Consultas enviadas contam mesmo quando retornam erro. Erros de preenchimento
   detectados antes do envio não consomem essa contagem local.
 - Salvar os horários não salva o token: para guardar o token, use **Salvar**.
-- Não realiza transferências, consultas automáticas ou novas tentativas sozinho.
+- Não realiza transferências. No PC, a lista avança automaticamente somente depois
+  de clicar em **Iniciar lista**; não repete tentativas que falharam automaticamente.
 - Erros de rede, token e permissão não são tratados como prova de chave inexistente.
 
 O Asaas documenta até **5 consultas por minuto**, além de uma cota de fichas.

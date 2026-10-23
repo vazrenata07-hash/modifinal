@@ -1,7 +1,10 @@
 """Importação local de números com 11 dígitos; não consulta serviços externos."""
 
+import os
 import re
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
 
@@ -28,6 +31,19 @@ class ListaImportada:
     registros: tuple
     ambiguas: int
     sem_numero: int
+    origem: object = None
+
+
+@dataclass
+class OrigemLista:
+    caminho: Path
+    linhas: tuple
+    encoding: str
+    bom: bytes
+    original: bytes
+    esperado: bytes
+    removidas: set = field(default_factory=set)
+    backup: object = None
 
 
 def extrair_linhas(texto):
@@ -53,16 +69,93 @@ def extrair_linhas(texto):
 
 
 def decodificar_texto(conteudo):
-    if conteudo.startswith((b"\xff\xfe", b"\xfe\xff")):
-        return conteudo.decode("utf-16")
+    return decodificar_com_formato(conteudo)[0]
+
+
+def decodificar_com_formato(conteudo):
+    if conteudo.startswith(b"\xff\xfe"):
+        return conteudo[2:].decode("utf-16-le"), "utf-16-le", b"\xff\xfe"
+    if conteudo.startswith(b"\xfe\xff"):
+        return conteudo[2:].decode("utf-16-be"), "utf-16-be", b"\xfe\xff"
+    if conteudo.startswith(b"\xef\xbb\xbf"):
+        return conteudo[3:].decode("utf-8"), "utf-8", b"\xef\xbb\xbf"
     if b"\x00" in conteudo:
         zeros_pares = conteudo[::2].count(b"\x00")
         zeros_impares = conteudo[1::2].count(b"\x00")
-        return conteudo.decode("utf-16-le" if zeros_impares >= zeros_pares else "utf-16-be")
+        encoding = "utf-16-le" if zeros_impares >= zeros_pares else "utf-16-be"
+        return conteudo.decode(encoding), encoding, b""
     try:
-        return conteudo.decode("utf-8-sig")
+        return conteudo.decode("utf-8"), "utf-8", b""
     except UnicodeDecodeError:
-        return conteudo.decode("cp1252")
+        return conteudo.decode("cp1252"), "cp1252", b""
+
+
+def verificar_origem(origem):
+    try:
+        if origem.caminho.read_bytes() != origem.esperado:
+            raise ErroImportacaoLista("O TXT original foi alterado fora do programa. A lista foi pausada; importe o arquivo novamente para continuar.")
+    except OSError:
+        raise ErroImportacaoLista("Não foi possível acessar o TXT original. A lista foi pausada; confira o arquivo antes de continuar.") from None
+
+
+def criar_backup_origem(origem):
+    if origem.backup is not None:
+        return
+    nome = origem.caminho.name + "." + datetime.now().strftime("%Y%m%d_%H%M%S_%f") + ".bak"
+    destino = origem.caminho.with_name(nome)
+    criado = False
+    try:
+        descritor = os.open(str(destino), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        criado = True
+        with os.fdopen(descritor, "wb") as arquivo:
+            arquivo.write(origem.original)
+            arquivo.flush()
+            os.fsync(arquivo.fileno())
+    except OSError:
+        if criado:
+            try:
+                destino.unlink()
+            except OSError:
+                pass
+        raise ErroImportacaoLista("O resultado foi salvo, mas não foi possível criar o backup do TXT. O original não foi alterado.") from None
+    origem.backup = destino
+
+
+def remover_linha_consultada(origem, linha_original):
+    if linha_original in origem.removidas:
+        return
+    verificar_origem(origem)
+    if not 1 <= linha_original <= len(origem.linhas):
+        raise ErroImportacaoLista("O resultado foi salvo, mas a linha original não foi localizada. Importe o TXT novamente.")
+    criar_backup_origem(origem)
+    removidas = origem.removidas | {linha_original}
+    texto = "".join(linha for indice, linha in enumerate(origem.linhas, start=1) if indice not in removidas)
+    novo_conteudo = origem.bom + texto.encode(origem.encoding)
+    temporario = None
+    try:
+        modo = origem.caminho.stat().st_mode & 0o777
+        with tempfile.NamedTemporaryFile(mode="wb", dir=origem.caminho.parent,
+                                         prefix=".pix-origem-", suffix=".tmp", delete=False) as arquivo:
+            temporario = Path(arquivo.name)
+            if os.name != "nt":
+                os.chmod(temporario, modo)
+            arquivo.write(novo_conteudo)
+            arquivo.flush()
+            os.fsync(arquivo.fileno())
+        verificar_origem(origem)
+        os.replace(temporario, origem.caminho)
+    except ErroImportacaoLista:
+        raise
+    except (OSError, UnicodeError):
+        raise ErroImportacaoLista("O resultado foi salvo, mas não foi possível remover a linha do TXT original. A lista foi pausada.") from None
+    finally:
+        if temporario is not None:
+            try:
+                temporario.unlink(missing_ok=True)
+            except OSError:
+                pass
+    origem.removidas = removidas
+    origem.esperado = novo_conteudo
 
 
 def importar_lista(caminho):
@@ -72,7 +165,8 @@ def importar_lista(caminho):
     try:
         if caminho.stat().st_size > MAX_ARQUIVO:
             raise ErroImportacaoLista("Escolha um arquivo de até 50 MB.")
-        texto = decodificar_texto(caminho.read_bytes())
+        conteudo = caminho.read_bytes()
+        texto, encoding, bom = decodificar_com_formato(conteudo)
     except ErroImportacaoLista:
         raise
     except (OSError, UnicodeError):
@@ -81,4 +175,5 @@ def importar_lista(caminho):
     if not resultado.registros:
         detalhe = " Há linhas com mais de um número diferente; elas foram ignoradas." if resultado.ambiguas else ""
         raise ErroImportacaoLista("Nenhuma linha com um único conjunto de 11 dígitos foi identificada." + detalhe)
-    return resultado
+    origem = OrigemLista(caminho.resolve(), tuple(texto.splitlines(keepends=True)), encoding, bom, conteudo, conteudo)
+    return ListaImportada(resultado.registros, resultado.ambiguas, resultado.sem_numero, origem)

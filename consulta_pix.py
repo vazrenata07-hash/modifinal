@@ -2,6 +2,7 @@
 """Consulta individual de chaves Pix, com entrada manual ou lista local."""
 
 import configparser
+import hashlib
 import json
 import math
 import os
@@ -20,9 +21,11 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 from contextlib import contextmanager
+from datetime import datetime
 from tkinter import filedialog, ttk
 
-from lista_pix import ErroImportacaoLista, importar_lista
+from lista_pix import (ErroImportacaoLista, importar_lista, remover_linha_consultada,
+                      verificar_origem)
 
 
 ENDPOINT = "https://api.asaas.com/v3/pix/addressKeys/external"
@@ -211,6 +214,70 @@ def registrar_consulta(caminho=None, agora=None):
         gravar_configuracao(configuracao, destino)
 
 
+def chave_associacao_lista(origem):
+    canonico = os.path.normcase(str(Path(origem).resolve()))
+    return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
+
+
+def carregar_saida_associada(origem):
+    configuracao = ler_configuracao(caminho_cache())
+    valor = configuracao.get("listas", chave_associacao_lista(origem), fallback="")
+    if not valor:
+        return None
+    try:
+        dados = json.loads(valor)
+        saida = Path(dados["saida"])
+        if not isinstance(dados["saida"], str) or saida.resolve() == Path(origem).resolve():
+            raise ValueError
+        return saida
+    except (ValueError, TypeError, KeyError):
+        raise ErroConsulta("A associação do TXT com o resultado no cache.ini é inválida. Confira o arquivo antes de continuar.") from None
+
+
+def salvar_saida_associada(origem, saida):
+    destino = caminho_cache()
+    with bloquear_cache(destino):
+        configuracao = ler_configuracao(destino)
+        if not configuracao.has_section("listas"):
+            configuracao.add_section("listas")
+        dados = {"origem": str(Path(origem).resolve()), "saida": str(Path(saida).resolve())}
+        configuracao.set("listas", chave_associacao_lista(origem), json.dumps(dados, ensure_ascii=False))
+        gravar_configuracao(configuracao, destino)
+
+
+def criar_saida_resultados(origem):
+    nome = "resultados_pix_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f") + ".txt"
+    destino = caminho_cache().parent / nome
+    if destino.resolve() == Path(origem).resolve():
+        raise ErroConsulta("O arquivo de resultados precisa ser diferente do TXT original.")
+    try:
+        descritor = os.open(str(destino), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descritor, "w", encoding="utf-8", newline="\n") as arquivo:
+            arquivo.write("Consultar Pix — resultados da lista\n")
+            arquivo.write("Criado em: " + datetime.now().astimezone().isoformat(timespec="seconds") + "\n")
+            arquivo.write("Origem: " + str(Path(origem).resolve()) + "\n")
+            arquivo.write("=" * 60 + "\n\n")
+            arquivo.flush()
+            os.fsync(arquivo.fileno())
+    except OSError:
+        raise ErroConsulta("Não foi possível criar o TXT de resultados. Confira a permissão de gravação na pasta do programa.") from None
+    return destino
+
+
+def acrescentar_saida_resultados(caminho, linha, chave, tipo, status, texto):
+    bloco = ("Hora: " + datetime.now().astimezone().isoformat(timespec="seconds")
+             + f"\nLinha original: {linha}\nChave: {chave}\nTipo: {tipo}\nStatus: {status}\n\n"
+             + texto + "\n\n" + "-" * 60 + "\n\n")
+    try:
+        descritor = os.open(str(caminho), os.O_WRONLY | os.O_APPEND)
+        with os.fdopen(descritor, "w", encoding="utf-8", newline="\n") as arquivo:
+            arquivo.write(bloco)
+            arquivo.flush()
+            os.fsync(arquivo.fileno())
+    except OSError:
+        raise ErroConsulta("Não foi possível acrescentar o resultado ao TXT de saída. A lista foi pausada; a linha original não será removida.") from None
+
+
 def normalizar_texto_erro(valor):
     texto = unicodedata.normalize("NFD", str(valor).lower())
     return "".join(c for c in texto if not unicodedata.combining(c))
@@ -389,6 +456,17 @@ class Aplicativo:
         self.fila_importacao = queue.Queue()
         self.registros_lista = {}
         self.item_em_consulta = None
+        self.lista_ativa = False
+        self.lista_finalizados = set()
+        self.agendamento_lista = None
+        self.consulta_automatica_em_curso = False
+        self.token_lista = ""
+        self.tipo_lista_capturado = "CPF"
+        self.origem_lista = None
+        self.arquivo_resultados = None
+        self.associacao_persistida = False
+        self.tipo_em_consulta = "CPF"
+        self.pendencia_resultado = None
         janela.title("Consultar Pix")
         janela.geometry("720x850")
         janela.minsize(600, 760)
@@ -493,6 +571,8 @@ class Aplicativo:
         self.tipo_lista = ttk.Combobox(barra, values=("CPF", "Telefone"), state="readonly", width=10)
         self.tipo_lista.set("CPF")
         self.tipo_lista.pack(side="left")
+        self.botao_lista = ttk.Button(barra, text="Iniciar lista", command=self.alternar_lista)
+        self.botao_lista.pack(side="right", padx=(8, 0))
         quadro = ttk.Frame(self.aba_lista)
         quadro.grid(row=1, column=0, sticky="ew")
         quadro.columnconfigure(0, weight=1)
@@ -507,20 +587,28 @@ class Aplicativo:
         rolagem = ttk.Scrollbar(quadro, orient="vertical", command=self.lista.yview)
         rolagem.grid(row=0, column=1, sticky="ns")
         self.lista.configure(yscrollcommand=rolagem.set)
-        self.resumo_lista = ttk.Label(self.aba_lista, text="Abra um arquivo, selecione uma linha e clique em Consultar.", style="Ajuda.TLabel", wraplength=600)
+        self.resumo_lista = ttk.Label(self.aba_lista, text="Abra um TXT e clique em Iniciar lista. Uma consulta por vez, com intervalo de 61 segundos.", style="Ajuda.TLabel", wraplength=600)
         self.resumo_lista.grid(row=2, column=0, sticky="w", pady=(8, 0))
+        self.progresso_lista = ttk.Label(self.aba_lista, text="0/0 processadas", style="Ajuda.TLabel")
+        self.progresso_lista.grid(row=3, column=0, sticky="w", pady=(4, 0))
+        self.rotulo_saida = ttk.Label(self.aba_lista, text="O TXT de resultados será criado ao iniciar a lista.", style="Ajuda.TLabel", wraplength=600)
+        self.rotulo_saida.grid(row=4, column=0, sticky="w", pady=(4, 0))
 
     def modo_lista(self):
         return hasattr(self, "abas") and self.abas.select() == str(self.aba_lista)
 
     def abrir_lista(self):
-        if self.ocupado or self.importando:
+        if self.ocupado or self.importando or self.lista_ativa:
+            return
+        if self.pendencia_resultado is not None:
+            self.status.configure(text="Há um resultado aguardando conclusão local. Corrija o arquivo indicado e clique em Iniciar lista antes de importar outro TXT.", foreground="#a13d29")
             return
         caminho = filedialog.askopenfilename(title="Abrir lista TXT", filetypes=[("Arquivo TXT", "*.txt")])
         if not caminho:
             return
         self.importando = True
         self.botao_abrir_lista.configure(state="disabled")
+        self.botao_lista.configure(state="disabled")
         self.resumo_lista.configure(text="Lendo o arquivo localmente…")
         threading.Thread(target=self.executar_importacao, args=(caminho,), daemon=True).start()
 
@@ -545,20 +633,175 @@ class Aplicativo:
             if sucesso:
                 self.lista.delete(*self.lista.get_children())
                 self.registros_lista.clear()
+                self.lista_finalizados.clear()
+                self.origem_lista = retorno.origem
+                self.arquivo_resultados = None
+                self.associacao_persistida = False
+                try:
+                    anterior = carregar_saida_associada(self.origem_lista.caminho)
+                except ErroConsulta as erro:
+                    self.rotulo_saida.configure(text=str(erro))
+                else:
+                    if anterior is not None and anterior.is_file():
+                        self.arquivo_resultados = anterior
+                        self.associacao_persistida = True
+                        self.rotulo_saida.configure(text="Continuar acrescentando em: " + str(anterior))
+                    elif anterior is not None:
+                        self.rotulo_saida.configure(text="O resultado anterior não foi encontrado. Ao iniciar, será criado um novo TXT sem sobrescrever outros arquivos.")
+                    else:
+                        self.rotulo_saida.configure(text="O TXT de resultados será criado ao iniciar a lista.")
                 for indice, registro in enumerate(retorno.registros):
                     item = f"linha_{indice}"
                     self.registros_lista[item] = registro
                     self.lista.insert("", "end", iid=item, values=(registro.linha, registro.numero, "Não consultado"))
-                self.resumo_lista.configure(text=f"{len(retorno.registros)} linhas identificadas. Ignoradas: {retorno.ambiguas} ambíguas e {retorno.sem_numero} sem conjunto de 11 dígitos. Selecione uma linha para consultar.")
+                self.resumo_lista.configure(text=f"{len(retorno.registros)} linhas identificadas. Ignoradas: {retorno.ambiguas} ambíguas e {retorno.sem_numero} sem conjunto de 11 dígitos. Clique em Iniciar lista.")
+                self.atualizar_progresso_lista()
             else:
                 self.resumo_lista.configure(text=retorno)
+            self.atualizar_controles_lista()
         self.janela.after(100, self.receber_importacao)
+
+    def preparar_saida_lista(self):
+        if self.origem_lista is None:
+            raise ErroConsulta("Importe o TXT original antes de consultar a lista.")
+        try:
+            verificar_origem(self.origem_lista)
+        except ErroImportacaoLista as erro:
+            raise ErroConsulta(str(erro)) from None
+        if self.arquivo_resultados is None:
+            self.arquivo_resultados = criar_saida_resultados(self.origem_lista.caminho)
+            self.associacao_persistida = False
+        try:
+            descritor = os.open(str(self.arquivo_resultados), os.O_WRONLY | os.O_APPEND)
+            os.close(descritor)
+        except OSError:
+            raise ErroConsulta("O TXT de resultados não está disponível para continuação. Confira o arquivo ou reimporte o TXT original para criar uma nova saída.") from None
+        if not self.associacao_persistida:
+            salvar_saida_associada(self.origem_lista.caminho, self.arquivo_resultados)
+            self.associacao_persistida = True
+        self.rotulo_saida.configure(text="Resultados: " + str(self.arquivo_resultados))
+
+    def salvar_resultado_lista(self, item, tipo, status, texto):
+        registro = self.registros_lista[item]
+        for segredo in (self.token_lista, self.token.get().strip()):
+            if segredo:
+                texto = texto.replace(segredo, "[token oculto]")
+        acrescentar_saida_resultados(self.arquivo_resultados, registro.linha, registro.numero, tipo, status, texto)
+
+    def concluir_resultado_pendente(self):
+        pendencia = self.pendencia_resultado
+        if pendencia is None:
+            return
+        item = pendencia["item"]
+        if not pendencia["saida_gravada"]:
+            self.salvar_resultado_lista(item, pendencia["tipo"], pendencia["status"], pendencia["texto"])
+            pendencia["saida_gravada"] = True
+        if pendencia["resultado"] in ("sucesso", "sem_cadastro"):
+            remover_linha_consultada(self.origem_lista, self.registros_lista[item].linha)
+        self.lista_finalizados.add(item)
+        self.lista.set(item, "resultado", pendencia["status"])
+        self.pendencia_resultado = None
+
+    def atualizar_progresso_lista(self, complemento=""):
+        total = len(self.registros_lista)
+        concluidos = len(self.lista_finalizados.intersection(self.registros_lista))
+        texto = f"{concluidos}/{total} processadas"
+        if complemento:
+            texto += " · " + complemento
+        self.progresso_lista.configure(text=texto)
+
+    def atualizar_controles_lista(self):
+        travado = self.ocupado or self.lista_ativa
+        self.token.configure(state="disabled" if travado else "normal")
+        self.botao_salvar.configure(state="disabled" if travado else "normal")
+        self.tipo.configure(state="disabled" if travado else "readonly")
+        self.chave.configure(state="disabled" if travado else "normal")
+        self.tipo_lista.configure(state="disabled" if travado else "readonly")
+        self.botao_abrir_lista.configure(state="disabled" if travado or self.importando else "normal")
+        self.botao_lista.configure(text="Pausar" if self.lista_ativa else "Iniciar lista",
+                                  state="normal" if self.lista_ativa or not self.ocupado and not self.importando else "disabled")
+        self.atualizar_limite(reagendar=False)
+
+    def alternar_lista(self):
+        if self.lista_ativa:
+            self.pausar_lista("Pausada. A consulta em andamento será concluída." if self.ocupado else "Pausada.")
+            return
+        if self.ocupado or self.importando:
+            self.status.configure(text="Aguarde a operação em andamento terminar.", foreground="#775d2b")
+            return
+        if not self.registros_lista:
+            self.status.configure(text="Abra um arquivo TXT antes de iniciar a lista.", foreground="#775d2b")
+            return
+        if self.pendencia_resultado is not None:
+            try:
+                self.concluir_resultado_pendente()
+            except (ErroConsulta, ErroImportacaoLista) as erro:
+                self.pausar_lista("Pausada: conclusão local pendente")
+                self.status.configure(text=str(erro), foreground="#a13d29")
+                return
+        if all(item in self.lista_finalizados for item in self.registros_lista):
+            self.atualizar_progresso_lista("Lista concluída")
+            self.status.configure(text="Esta lista já foi processada. Abra um TXT para iniciar uma nova lista.", foreground=COR_SUCESSO_SUAVE)
+            return
+        try:
+            self.token_lista = validar_token(self.token.get())
+            self.tipo_lista_capturado = TIPOS[self.tipo_lista.get()]
+            segundos_ate_liberar()
+            self.preparar_saida_lista()
+        except (ErroConsulta, KeyError) as erro:
+            self.status.configure(text=str(erro) if isinstance(erro, ErroConsulta) else "Selecione o tipo da lista.", foreground="#a13d29")
+            return
+        self.lista_ativa = True
+        self.atualizar_controles_lista()
+        self.atualizar_progresso_lista("Em andamento")
+        self.agendar_proximo_item()
+
+    def pausar_lista(self, motivo="Pausada."):
+        self.lista_ativa = False
+        if self.agendamento_lista is not None:
+            self.janela.after_cancel(self.agendamento_lista)
+            self.agendamento_lista = None
+        self.token_lista = ""
+        self.atualizar_progresso_lista(motivo)
+        self.atualizar_controles_lista()
+
+    def agendar_proximo_item(self):
+        if self.fechado or not self.lista_ativa or self.ocupado:
+            return
+        if self.agendamento_lista is not None:
+            self.janela.after_cancel(self.agendamento_lista)
+        self.agendamento_lista = self.janela.after(1, self.proximo_item_lista)
+
+    def proximo_item_lista(self):
+        self.agendamento_lista = None
+        if self.fechado or not self.lista_ativa or self.ocupado:
+            return
+        pendentes = [item for item in self.registros_lista if item not in self.lista_finalizados]
+        if not pendentes:
+            self.pausar_lista("Lista concluída")
+            self.status.configure(text="Lista concluída.", foreground=COR_SUCESSO_SUAVE)
+            return
+        try:
+            segundos = segundos_ate_liberar()
+        except ErroConsulta as erro:
+            self.pausar_lista("Pausada: não foi possível ler o intervalo")
+            self.status.configure(text=str(erro), foreground="#a13d29")
+            return
+        if segundos:
+            minutos, resto = divmod(segundos, 60)
+            self.atualizar_progresso_lista(f"Próxima consulta em {minutos:02d}:{resto:02d}")
+            self.agendamento_lista = self.janela.after(1000, self.proximo_item_lista)
+            return
+        item = pendentes[0]
+        self.lista.selection_set(item)
+        self.lista.see(item)
+        self.consultar(automatico=True, item_automatico=item)
 
     def alternar_token(self):
         self.token.configure(show="" if self.mostrar_token.get() else "*")
 
     def salvar(self):
-        if self.ocupado:
+        if self.ocupado or getattr(self, "lista_ativa", False):
             return
         try:
             salvar_token(self.token.get())
@@ -581,7 +824,8 @@ class Aplicativo:
                     minutos, resto = divmod(segundos, 60)
                     self.botao.configure(state="disabled", text=f"Consultar ({minutos:02d}:{resto:02d})")
                 else:
-                    self.botao.configure(state="normal", text="Consultar selecionado" if self.modo_lista() else "Consultar")
+                    self.botao.configure(state="disabled" if getattr(self, "lista_ativa", False) else "normal",
+                                          text="Lista em andamento" if getattr(self, "lista_ativa", False) else "Consultar selecionado" if self.modo_lista() else "Consultar")
         if reagendar:
             self.janela.after(1000, self.atualizar_limite)
 
@@ -592,13 +836,28 @@ class Aplicativo:
         self.resultado.insert("1.0", texto)
         self.resultado.configure(state="disabled")
 
-    def consultar(self):
-        if self.ocupado:
+    def consultar(self, automatico=False, item_automatico=None):
+        if self.ocupado or getattr(self, "lista_ativa", False) and not automatico:
+            return
+        if getattr(self, "pendencia_resultado", None) is not None:
+            try:
+                self.concluir_resultado_pendente()
+            except (ErroConsulta, ErroImportacaoLista) as erro:
+                self.pausar_lista("Pausada: conclusão local pendente")
+                self.status.configure(text=str(erro), foreground="#a13d29")
+            else:
+                self.atualizar_progresso_lista("Conclusão local recuperada; nenhuma nova consulta enviada")
+                self.status.configure(text="Resultado pendente concluído localmente, sem repetir a consulta.", foreground=COR_SUCESSO_SUAVE)
             return
         item_lista = None
+        validado = False
         try:
-            token = validar_token(self.token.get())
-            if self.modo_lista():
+            token = validar_token(self.token_lista if automatico else self.token.get())
+            if automatico:
+                item_lista = item_automatico
+                tipo = self.tipo_lista_capturado
+                chave = normalizar_chave(tipo, self.registros_lista[item_lista].numero)
+            elif self.modo_lista():
                 if self.importando:
                     raise ErroConsulta("Aguarde a importação do arquivo terminar antes de consultar uma linha.")
                 selecionados = self.lista.selection()
@@ -610,18 +869,41 @@ class Aplicativo:
             else:
                 tipo = TIPOS.get(self.tipo.get())
                 chave = normalizar_chave(tipo, self.chave.get())
+            validado = True
+            if item_lista:
+                self.preparar_saida_lista()
             registrar_consulta()
         except LimiteConsultas as erro:
             self.status.configure(text=str(erro), foreground="#775d2b")
             self.atualizar_limite(reagendar=False)
+            if automatico:
+                self.agendar_proximo_item()
             return
         except ErroConsulta as erro:
             self.status.configure(text=str(erro), foreground="#a13d29")
             self.escrever("Consulta não enviada. Confira os campos acima.")
             self.atualizar_limite(reagendar=False)
+            if automatico:
+                if validado:
+                    self.pausar_lista("Pausada: confira o arquivo ou o intervalo")
+                else:
+                    self.lista.set(item_lista, "resultado", "Formato inválido")
+                    self.pendencia_resultado = {"item": item_lista, "tipo": self.tipo_lista_capturado,
+                                               "status": "Formato inválido", "texto": str(erro),
+                                               "resultado": "entrada_invalida", "saida_gravada": False}
+                    try:
+                        self.concluir_resultado_pendente()
+                    except (ErroConsulta, ErroImportacaoLista) as falha_saida:
+                        self.pausar_lista("Pausada: não foi possível salvar o resultado")
+                        self.status.configure(text=str(falha_saida), foreground="#a13d29")
+                        return
+                    self.atualizar_progresso_lista("Linha ignorada: formato inválido")
+                    self.agendar_proximo_item()
             return
         self.ocupado = True
         self.item_em_consulta = item_lista
+        self.tipo_em_consulta = tipo
+        self.consulta_automatica_em_curso = automatico
         if item_lista:
             self.lista.set(item_lista, "resultado", "Consultando…")
         if hasattr(self, "botao_abrir_lista"):
@@ -636,6 +918,8 @@ class Aplicativo:
         self.progresso.start(12)
         self.status.configure(text="Consultando…", foreground="#526d66")
         self.escrever(f"Consultando {tipo}: {chave}")
+        if hasattr(self, "botao_lista"):
+            self.atualizar_controles_lista()
         threading.Thread(target=self.executar, args=(token, tipo, chave), daemon=True).start()
 
     def executar(self, token, tipo, chave):
@@ -677,16 +961,42 @@ class Aplicativo:
             self.status.configure(text=texto if sem_cadastro else "Consulta inconclusiva. Veja os detalhes abaixo." if inconclusivo else "Consulta concluída." if resultado == "sucesso" else "Consulta não concluída. Veja o motivo abaixo.",
                                   foreground=COR_SUCESSO_SUAVE if sem_cadastro else "#775d2b" if inconclusivo else "#116b55" if resultado == "sucesso" else "#a13d29")
             item_lista = getattr(self, "item_em_consulta", None)
+            falha_local = False
             if item_lista and item_lista in self.registros_lista:
                 rotulo = {"sucesso": "Dados recebidos", "sem_cadastro": "Sem Pix cadastrado", "inconclusivo": "Inconclusivo", "erro": "Erro na consulta"}.get(resultado, "Consulta concluída")
                 self.lista.set(item_lista, "resultado", rotulo)
+                self.pendencia_resultado = {"item": item_lista, "tipo": self.tipo_em_consulta,
+                                           "status": rotulo, "texto": texto,
+                                           "resultado": resultado, "saida_gravada": False}
+                try:
+                    self.concluir_resultado_pendente()
+                except (ErroConsulta, ErroImportacaoLista) as erro:
+                    falha_local = True
+                    self.lista.set(item_lista, "resultado", "Confira gravação/origem")
+                    self.pausar_lista("Pausada: confira o arquivo de resultados e o TXT original")
+                    self.status.configure(text=str(erro), foreground="#a13d29")
+                    self.escrever(texto + "\n\n" + str(erro))
             self.item_em_consulta = None
+            automatico = getattr(self, "consulta_automatica_em_curso", False)
+            self.consulta_automatica_em_curso = False
+            if automatico and resultado not in ("sucesso", "sem_cadastro") and not falha_local:
+                self.pausar_lista("Pausada após erro. Confira o resultado antes de retomar.")
+            if hasattr(self, "botao_lista"):
+                self.atualizar_controles_lista()
+                self.atualizar_progresso_lista("Em andamento" if self.lista_ativa else "Pausada" if automatico else "")
+            if automatico and self.lista_ativa:
+                self.agendar_proximo_item()
             self.atualizar_limite(reagendar=False)
             self.chave.focus_set()
         self.janela.after(100, self.receber_resultado)
 
     def fechar(self):
         self.fechado = True
+        self.lista_ativa = False
+        if self.agendamento_lista is not None:
+            self.janela.after_cancel(self.agendamento_lista)
+            self.agendamento_lista = None
+        self.token_lista = ""
         self.token.configure(state="normal")
         self.token.delete(0, "end")
         self.janela.destroy()
