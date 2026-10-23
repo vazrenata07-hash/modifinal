@@ -1,14 +1,31 @@
 # Consultar Pix
 
-Programa simples para consultar **uma chave Pix por vez** usando a API do Asaas.
-Roda no seu computador, com interface gráfica e sem servidor.
+Programa simples para consultar **uma chave Pix por vez**, com versões para
+computador e Android. A consulta usa a API do Asaas, sem servidor próprio.
+
+## Android 9 ou superior
+
+Baixe [ConsultaPix-Android.apk](ConsultaPix-Android.apk) pelo botão
+**Download raw file**, instale e abra **Consultar Pix**. Se o Android solicitar,
+permita a instalação pelo navegador ou gerenciador de arquivos usado para baixar.
+Cole o token, toque em **Salvar**, escolha o tipo da chave e toque em **Consultar**.
+O APK atende Android 9 ou superior e não depende de serviços do Google.
 
 ## Usar no Windows
 
 1. Baixe [ConsultaPix.zip](ConsultaPix.zip) e clique em **Download raw file** no GitHub.
 2. Extraia o ZIP para uma pasta.
 3. Abra **Iniciar.bat** com dois cliques.
-4. Cole seu **token de produção do Asaas**, escolha o tipo da chave e clique em **Consultar**.
+4. Cole seu **token de produção**, escolha o tipo da chave e clique em **Consultar**.
+5. Para não precisar colar novamente, clique em **Salvar** ao lado do token.
+
+O botão **Salvar** grava `cache.ini` na mesma pasta de `consulta_pix.py`
+(ou do executável, se o programa for empacotado). O token salvo é carregado
+automaticamente na próxima abertura. No Android, o arquivo fica na pasta
+privada do aplicativo e o token é criptografado com o Android Keystore.
+O salvamento só acontece ao clicar ou tocar em **Salvar**.
+No PC, o INI contém o token em texto: mantenha esse arquivo privado e não o envie
+ao GitHub nem junto do programa. O arquivo está excluído pelo `.gitignore`.
 
 É necessário ter **Python 3.9 ou superior com Tkinter**. Se ainda não tiver,
 instale pelo [site oficial](https://www.python.org/downloads/), marque
@@ -43,7 +60,15 @@ sudo apt install python3 python3-tk
 - CPF e telefone podem ter 11 dígitos: selecione o tipo correto.
 - Consulta diretamente `GET https://api.asaas.com/v3/pix/addressKeys/external`.
 - Exibe os dados recebidos do Asaas, incluindo titular e instituição quando disponíveis.
-- O token fica apenas na memória durante o uso. O programa não salva consultas ou resultados.
+- O token pode ser salvo pelo botão **Salvar**. Consultas e resultados não são gravados.
+- Respostas que confirmam explicitamente chave não cadastrada aparecem em verde suave.
+- HTTP 404 sem detalhes é mostrado como inconclusivo: o código isolado não confirma ausência de Pix.
+- O botão permite até duas consultas em uma janela móvel de 120 segundos.
+  Depois da segunda, mostra uma contagem regressiva até liberar uma nova consulta.
+  Os horários são salvos localmente e continuam valendo ao fechar e reabrir o app.
+- Consultas enviadas contam mesmo quando retornam erro. Erros de preenchimento
+  detectados antes do envio não consomem essa contagem local.
+- Salvar os horários não salva o token: para guardar o token, use **Salvar**.
 - Não realiza transferências, importação de listas, consultas automáticas ou novas tentativas sozinho.
 - Erros de rede, token e permissão não são tratados como prova de chave inexistente.
 

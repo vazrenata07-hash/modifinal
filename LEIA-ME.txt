@@ -8,9 +8,18 @@ COMO USAR NO WINDOWS
 3. De dois cliques em Iniciar.bat.
 4. Cole seu token de PRODUCAO do Asaas.
 5. Escolha o tipo, digite uma unica chave Pix e clique em Consultar.
+6. Clique em Salvar ao lado do token para reutiliza-lo nas proximas aberturas.
 
 O token so precisa ser colado uma vez enquanto a janela estiver aberta.
-O programa nao salva o token, as consultas ou os resultados no computador.
+Ao clicar em Salvar, o token fica no arquivo cache.ini, na pasta do programa.
+Ele sera carregado automaticamente nas proximas aberturas.
+Esse arquivo contem o token em texto: mantenha-o privado e nao o compartilhe.
+O programa nao salva consultas ou resultados no computador.
+Para manter o limite mesmo ao fechar e reabrir, salva apenas os horarios de envio.
+Sao permitidas duas consultas por janela de 120 segundos; depois o botao mostra
+a contagem regressiva ate liberar uma nova consulta. Respostas de erro tambem
+contam quando houve envio. Erros de preenchimento antes do envio nao contam.
+Os horarios sao gravados mesmo sem salvar o token; isso nao grava o token digitado.
 Nao precisa instalar pacotes com pip. Nao precisa de servidor ou navegador.
 Precisa de internet para consultar o Asaas.
 
@@ -43,7 +52,14 @@ Exibe os dados devolvidos pelo Asaas. Nao executa pagamentos ou transferencias.
 O botao fica bloqueado enquanto a consulta esta em andamento.
 Nao faz consultas automaticas, em lote ou novas tentativas sozinho.
 Um erro de rede, de token ou de permissao nao significa chave inexistente.
+Confirmacoes explicitas de chave nao cadastrada aparecem em verde suave.
+HTTP 404 sem detalhes aparece como inconclusivo: nao confirma CPF sem Pix.
 Nao verifica se o recebedor e confiavel; apenas mostra o retorno da API.
+
+VERSAO ANDROID
+Baixe ConsultaPix-Android.apk no repositorio do GitHub e instale no celular.
+Compativel com Android 9 ou superior. O botao Salvar grava o token na pasta
+privada do aplicativo, que o recarrega nas proximas aberturas.
 
 LIMITES E CUSTO
 O Asaas documenta limite de 5 consultas por minuto, alem da cota de fichas.

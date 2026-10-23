@@ -8,3 +8,12 @@ venv/
 *.log
 .DS_Store
 Thumbs.db
+cache.ini
+cache.ini.*
+.cache.ini.lock
+.consulta-pix-*.tmp
+android/build/
+android/.gradle/
+android/local.properties
+*.jks
+*.keystore

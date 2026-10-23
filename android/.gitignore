@@ -1,0 +1,7 @@
+/build/
+/local.properties
+*.jks
+*.keystore
+*.p12
+cache.ini
+cache.ini.tmp
