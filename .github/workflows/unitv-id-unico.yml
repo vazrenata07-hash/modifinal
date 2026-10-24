@@ -1,10 +1,11 @@
-name: UniTV - checagem local e validade
+name: UniTV - alternativa com recuperacao automatica
 on:
   push:
     paths:
       - '.github/workflows/unitv-id-unico.yml'
       - 'unitv-local/**'
       - 'unitv-expiry/**'
+      - 'unitv-autorefresh/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -45,6 +46,8 @@ jobs:
           PY
           (cd work/decoded && patch -p1 < ../../unitv-local/checagem-local.patch)
           (cd work/decoded && patch -p1 < ../../unitv-expiry/validade-local.patch)
+          (cd work/decoded && patch -p1 < ../../unitv-autorefresh/autorefresh.patch)
+          python3 unitv-autorefresh/build_helper.py unitv-autorefresh/SilentRefresh.java work/apktool.jar work/decoded work/helper-build
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json
@@ -56,12 +59,15 @@ jobs:
               'smali/com/module/basemvp/a.smali',
               'smali/xc/a1$c.smali',
               'smali/tc/a.smali',
+              'smali/yb/h.smali',
+              'smali_classes2/ze/c.smali',
               'smali/s8/k1.smali',
               'smali/v9/c.smali',
               'smali/com/main/ui/activity/HomeActivity.smali',
               'smali/com/interactive/brasiliptv/app/LocalSessionPolicy.smali',
           ])
-          if changed != expected:
+          helpers = [p for p in changed if p.startswith('smali/com/interactive/brasiliptv/app/SilentRefresh') and p.endswith('.smali')]
+          if not helpers or sorted(p for p in changed if p not in helpers) != expected:
               raise SystemExit('Unexpected source changes: ' + repr(changed))
           report = {
               'base_asset': 'UniTV-5.9.0-teste-atualizacao-mac.apk',
@@ -72,9 +78,11 @@ jobs:
               'additional_patch': 'unitv-expiry/validade-local.patch',
               'additional_patch_sha256': hashlib.sha256(Path('unitv-expiry/validade-local.patch').read_bytes()).hexdigest(),
               'earlier_mac_or_30_second_network_patches_applied': False,
+              'autorefresh_patch_sha256': hashlib.sha256(Path('unitv-autorefresh/autorefresh.patch').read_bytes()).hexdigest(),
+              'autorefresh_source_sha256': hashlib.sha256(Path('unitv-autorefresh/SilentRefresh.java').read_bytes()).hexdigest(),
               'application_tests_executed': False,
           }
-          Path('work/ORIGEM-validade-local.json').write_text(json.dumps(report, indent=2) + '\n')
+          Path('work/ORIGEM-autorefresh.json').write_text(json.dumps(report, indent=2) + '\n')
           PY
           java -jar work/apktool.jar b work/decoded -o work/rebuilt.apk
           python3 - <<'PY'
@@ -85,19 +93,19 @@ jobs:
                   n = info.filename
                   if n.startswith('META-INF/') and (n.upper().endswith(('.SF', '.RSA', '.DSA', '.EC')) or n.upper() == 'META-INF/MANIFEST.MF'):
                       continue
-                  data = Path('work/decoded/build/apk/classes.dex').read_bytes() if n == 'classes.dex' else src.read(n)
+                  data = Path('work/decoded/build/apk', n).read_bytes() if n in ('classes.dex', 'classes2.dex') else src.read(n)
                   dst.writestr(info, data)
           PY
       - name: Assinar e preparar arquivos
         run: |
           java -jar work/signer.jar -a work/id-unico-unsigned.apk -o work/signed
           mkdir -p work/release
-          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-checagem-local-validade.apk
-          cp unitv-expiry/LEIA-ME-validade-local.txt unitv-expiry/validade-local.patch work/release/
+          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-autorefresh-alternativo.apk
+          cp unitv-autorefresh/LEIA-ME-autorefresh.txt unitv-autorefresh/autorefresh.patch work/release/
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, zipfile
-          output = Path('work/release/UniTV-5.9.0-checagem-local-validade.apk')
+          output = Path('work/release/UniTV-5.9.0-autorefresh-alternativo.apk')
           def is_signature(n):
               u = n.upper()
               return u.startswith('META-INF/') and (u.endswith(('.SF', '.RSA', '.DSA', '.EC')) or u == 'META-INF/MANIFEST.MF')
@@ -105,16 +113,16 @@ jobs:
               ah = {n: hashlib.sha256(a.read(n)).hexdigest() for n in a.namelist() if not is_signature(n)}
               bh = {n: hashlib.sha256(b.read(n)).hexdigest() for n in b.namelist() if not is_signature(n)}
           changed = sorted(n for n in set(ah) | set(bh) if ah.get(n) != bh.get(n))
-          if changed != ['classes.dex']:
+          if changed != ['classes.dex', 'classes2.dex']:
               raise SystemExit('Unexpected APK content changes: ' + repr(changed))
-          report = json.loads(Path('work/ORIGEM-validade-local.json').read_text())
+          report = json.loads(Path('work/ORIGEM-autorefresh.json').read_text())
           report['modified_apk_entries_excluding_signatures'] = changed
           report['output_sha256'] = hashlib.sha256(output.read_bytes()).hexdigest()
-          Path('work/release/ORIGEM-validade-local.json').write_text(json.dumps(report, indent=2) + '\n')
+          Path('work/release/ORIGEM-autorefresh.json').write_text(json.dumps(report, indent=2) + '\n')
           PY
-          (cd work/release && sha256sum *.apk > SHA256-checagem-local-validade.txt)
+          (cd work/release && sha256sum *.apk > SHA256-autorefresh.txt)
       - name: Publicar na release indicada pelo usuario
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-checagem-local-validade.apk work/release/LEIA-ME-validade-local.txt work/release/validade-local.patch work/release/SHA256-checagem-local-validade.txt work/release/ORIGEM-validade-local.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-autorefresh-alternativo.apk work/release/LEIA-ME-autorefresh.txt work/release/autorefresh.patch work/release/SHA256-autorefresh.txt work/release/ORIGEM-autorefresh.json --repo "$GITHUB_REPOSITORY" --clobber
