@@ -10,6 +10,7 @@ import core.request.result.LoginResult;
 import io.reactivex.Observable;
 import io.reactivex.ObservableSource;
 import io.reactivex.functions.Function;
+import io.reactivex.functions.Consumer;
 import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.ReplaySubject;
 import java.lang.reflect.Method;
@@ -27,6 +28,19 @@ public final class SilentRefresh {
         "EpgBean", "LineupBean", "GetPersonBean", "ItemByPersonBean"));
     private static Flight current;
     private static long lastAttempt = -60000L;
+
+    public static void onRemoteSessionEvent() {
+        String token = zc.f0.a.n();
+        String id = zc.f0.a.o();
+        if (token == null || token.length() == 0 || id == null || id.length() == 0) return;
+        refresh().subscribe(new Consumer<Boolean>() {
+            @Override public void accept(Boolean ok) { }
+        }, new Consumer<Throwable>() {
+            @Override public void accept(Throwable failure) {
+                Log.i("UniTVSession", "remote session recovery not completed or cooldown active");
+            }
+        });
+    }
 
     public static Observable wrap(final Observable source, final Object bean,
                                   final Function request) {
