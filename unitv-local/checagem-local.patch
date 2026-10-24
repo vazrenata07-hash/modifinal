@@ -1,0 +1,225 @@
+--- a/smali/com/module/basemvp/a.smali
++++ b/smali/com/module/basemvp/a.smali
+@@ -1459,6 +1459,12 @@
+ .method public final c3(Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Lvf/l;)V
+     .locals 24
+ 
++    invoke-static/range {p1 .. p1}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
++    move-result v0
++    if-eqz v0, :local_session_original
++    return-void
++    :local_session_original
++
+     .line 1
+     .line 2
+     move-object/from16 v0, p0
+@@ -3204,83 +3210,15 @@
+ .end method
+ 
+ .method public final onEventRemoteLogin(Lcom/module/event/RemoteLoginEvent;)V
+-    .locals 7
++    .locals 1
+     .annotation runtime Lig/m;
+         sticky = true
+         threadMode = .enum Lorg/greenrobot/eventbus/ThreadMode;->MAIN:Lorg/greenrobot/eventbus/ThreadMode;
+     .end annotation
+-
+-    .line 1
+-    .line 2
+-    const-string/jumbo v0, "event"
+-
+-    .line 3
+-    .line 4
+-    .line 5
+-    invoke-static {p1, v0}, Lkotlin/jvm/internal/k;->f(Ljava/lang/Object;Ljava/lang/String;)V
+-
+-    .line 6
+-    .line 7
+-    iget-boolean v0, p0, Lcom/module/basemvp/a;->A:Z
+-
+-    .line 8
+-    .line 9
+-    if-nez v0, :cond_0
+-
+-    .line 10
+-    return-void
+-
+-    .line 11
+-    .line 12
+-    .line 13
+-    :cond_0
+     invoke-static {}, Lig/c;->d()Lig/c;
+-
+-    .line 14
+     move-result-object v0
+-
+-    .line 15
+-    .line 16
+-    .line 17
+     invoke-virtual {v0, p1}, Lig/c;->s(Ljava/lang/Object;)Z
+-
+-    .line 18
+-    .line 19
+-    new-instance v1, Lxc/a1;
+-
+-    .line 20
+-    .line 21
+-    new-instance v0, Lcom/module/basemvp/a$c;
+-
+-    .line 22
+-    .line 23
+-    .line 24
+-    invoke-direct {v0, p0, p1}, Lcom/module/basemvp/a$c;-><init>(Lcom/module/basemvp/a;Lcom/module/event/RemoteLoginEvent;)V
+-
+-    .line 25
+-    .line 26
+-    .line 27
+-    invoke-direct {v1, v0}, Lxc/a1;-><init>(Lqc/s0;)V
+-
+-    .line 28
+-    const/4 v2, 0x1
+-
+-    .line 29
+-    .line 30
+-    const-wide/16 v3, 0x0
+-
+-    .line 31
+-    const/4 v5, 0x2
+-
+-    .line 32
+-    const/4 v6, 0x0
+-
+-    .line 33
+-    .line 34
+-    .line 35
+-    invoke-static/range {v1 .. v6}, Lxc/a1;->h(Lxc/a1;ZJILjava/lang/Object;)V
+-
+-    .line 36
++    invoke-static {}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptRemoteEvent()V
+     return-void
+ .end method
+ 
+--- a/smali/xc/a1$c.smali
++++ b/smali/xc/a1$c.smali
+@@ -234,6 +234,23 @@
+ .method public onError(Ljava/lang/Throwable;)V
+     .locals 4
+ 
++    instance-of v0, p1, Lcore/request/converterFactory/bean/ResultException;
++    if-eqz v0, :local_session_original
++    move-object v0, p1
++    check-cast v0, Lcore/request/converterFactory/bean/ResultException;
++    invoke-virtual {v0}, Lcore/request/converterFactory/bean/ResultException;->getReturnCode()Ljava/lang/String;
++    move-result-object v0
++    invoke-static {v0}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
++    move-result v0
++    if-eqz v0, :local_session_original
++    iget-object v0, p0, Lxc/a1$c;->d:Lxc/a1;
++    invoke-static {v0}, Lxc/a1;->d(Lxc/a1;)J
++    move-result-wide v2
++    const/4 v1, 0x0
++    invoke-virtual {v0, v1, v2, v3}, Lxc/a1;->g(ZJ)V
++    return-void
++    :local_session_original
++
+     .line 1
+     .line 2
+     const-string/jumbo v0, "e"
+--- a/smali/s8/k1.smali
++++ b/smali/s8/k1.smali
+@@ -696,6 +696,12 @@
+ 
+ .method private static final Ha(Ls8/k1;Ljava/lang/String;Z)V
+     .locals 19
++
++    invoke-static/range {p1 .. p1}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
++    move-result v0
++    if-eqz v0, :local_session_original
++    return-void
++    :local_session_original
+ 
+     .line 1
+     .line 2
+--- a/smali/v9/c.smali
++++ b/smali/v9/c.smali
+@@ -851,6 +851,12 @@
+ .method private static final q9(Lv9/c;Ljava/lang/String;Z)V
+     .locals 20
+ 
++    invoke-static/range {p1 .. p1}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
++    move-result v0
++    if-eqz v0, :local_session_original
++    return-void
++    :local_session_original
++
+     .line 1
+     .line 2
+     move-object/from16 v0, p0
+--- a/smali/com/main/ui/activity/HomeActivity.smali
++++ b/smali/com/main/ui/activity/HomeActivity.smali
+@@ -3828,6 +3828,12 @@
+ 
+     .line 6
+     move-result-object v6
++    invoke-static {v6}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
++    move-result v0
++    if-eqz v0, :local_session_original
++    return-void
++    :local_session_original
++
+ 
+     .line 7
+     .line 8
+--- /dev/null
++++ b/smali/com/interactive/brasiliptv/app/LocalSessionPolicy.smali
+@@ -0,0 +1,50 @@
++.class public final Lcom/interactive/brasiliptv/app/LocalSessionPolicy;
++.super Ljava/lang/Object;
++
++.method public static acceptCode(Ljava/lang/String;)Z
++    .locals 3
++    const-string v0, "aaa100027"
++    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
++    move-result v1
++    if-nez v1, :accepted
++    const-string v0, "aaa100028"
++    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
++    move-result v1
++    if-nez v1, :accepted
++    const-string v0, "aaa100083"
++    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
++    move-result v1
++    if-nez v1, :accepted
++    const-string v0, "portal100054"
++    invoke-virtual {v0, p0}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
++    move-result v1
++    if-nez v1, :accepted
++    const/4 v0, 0x0
++    return v0
++    :accepted
++    invoke-static {}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->clearLocalBlock()V
++    const-string v0, "UniTVSession"
++    const-string v1, "local enforcement skipped; code="
++    invoke-virtual {v1, p0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v1
++    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
++    const/4 v0, 0x1
++    return v0
++.end method
++
++.method private static clearLocalBlock()V
++    .locals 2
++    sget-object v0, Lzc/f0;->a:Lzc/f0;
++    const/4 v1, 0x0
++    invoke-virtual {v0, v1}, Lzc/f0;->V(Z)V
++    return-void
++.end method
++
++.method public static acceptRemoteEvent()V
++    .locals 2
++    invoke-static {}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->clearLocalBlock()V
++    const-string v0, "UniTVSession"
++    const-string v1, "remote-login event consumed; enforcement check not started"
++    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
++    return-void
++.end method
