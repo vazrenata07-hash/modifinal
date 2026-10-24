@@ -37,6 +37,7 @@ FUNDO_SUCESSO_SUAVE = "#edf7ef"
 MAX_CONSULTAS = 1
 INTERVALO_CONSULTAS = 61
 TEMPOS_PADRAO = {"manual": 61, "lista": 61}
+PAUSA_PADRAO = {"ativa": False, "a_cada": 10, "duracao": 60}
 FORMATO_SAIDA = "cpf_sem_pix_sucesso_v1"
 
 
@@ -198,8 +199,68 @@ def carregar_tempos(caminho=None):
     return tempos_configuracao(ler_configuracao(destino))
 
 
-def salvar_tempos(manual, lista, caminho=None):
+def inteiro_pausa(valor, maximo, campo):
+    texto = str(valor).strip()
+    if not re.fullmatch(r"[0-9]+", texto):
+        raise ErroConsulta(f"{campo}: informe um número inteiro de 1 a {maximo}.")
+    try:
+        numero = int(texto)
+    except ValueError:
+        raise ErroConsulta(f"{campo}: informe um número inteiro de 1 a {maximo}.") from None
+    if not 1 <= numero <= maximo:
+        raise ErroConsulta(f"{campo}: informe um número inteiro de 1 a {maximo}.")
+    return numero
+
+
+def validar_opcoes_pausa(opcoes, modo):
+    nome = "Manual" if modo == "manual" else "Lista"
+    if not isinstance(opcoes, dict):
+        raise ErroConsulta(f"As opções de pausa extra de {nome} não são válidas.")
+    ativa = opcoes.get("ativa", False)
+    if not isinstance(ativa, bool):
+        raise ErroConsulta(f"A opção de pausa extra de {nome} não é válida.")
+    return {"ativa": ativa,
+            "a_cada": inteiro_pausa(opcoes.get("a_cada", 10), 100000, f"{nome} — a cada quantas consultas"),
+            "duracao": inteiro_pausa(opcoes.get("duracao", 60), 86400, f"{nome} — pausa extra em segundos")}
+
+
+def opcoes_pausa_configuracao(configuracao, modo):
+    secao = "pausa_" + modo
+    valor_ativa = configuracao.get(secao, "ativa", fallback="0").strip().lower()
+    if valor_ativa not in ("0", "1", "false", "true", "no", "yes", "off", "on"):
+        raise ErroConsulta("A ativação da pausa extra no cache.ini não é válida. Corrija-a em Configurações.")
+    return validar_opcoes_pausa({"ativa": valor_ativa in ("1", "true", "yes", "on"),
+                                "a_cada": configuracao.get(secao, "a_cada", fallback="10"),
+                                "duracao": configuracao.get(secao, "duracao", fallback="60")}, modo)
+
+
+def estado_pausa_configuracao(configuracao, modo):
+    opcoes = opcoes_pausa_configuracao(configuracao, modo)
+    secao = "pausa_" + modo
+    try:
+        contador_texto = configuracao.get(secao, "contador", fallback="0").strip()
+        if not re.fullmatch(r"[0-9]+", contador_texto):
+            raise ValueError
+        contador = int(contador_texto)
+        pausa_ate = float(configuracao.get(secao, "pausa_ate", fallback="0"))
+        marcador_texto = configuracao.get(secao, "marcador", fallback="").strip()
+        marcador = float(marcador_texto) if marcador_texto else None
+        if not 0 <= contador < opcoes["a_cada"] or not math.isfinite(pausa_ate) or pausa_ate < 0:
+            raise ValueError
+        if marcador is not None and (not math.isfinite(marcador) or marcador < 0):
+            raise ValueError
+    except (ValueError, TypeError, configparser.Error):
+        raise ErroConsulta("O estado da pausa extra no cache.ini é inválido. Altere a opção correspondente em Configurações para reiniciá-la.") from None
+    return dict(opcoes, contador=contador, pausa_ate=pausa_ate, marcador=marcador)
+
+
+def salvar_tempos(manual, lista, caminho=None, *, pausas=None):
     tempos = {"manual": validar_tempo(manual, "manual"), "lista": validar_tempo(lista, "lista")}
+    novas_pausas = {}
+    if pausas is not None:
+        if not isinstance(pausas, dict) or any(modo not in TEMPOS_PADRAO for modo in pausas):
+            raise ErroConsulta("As opções de pausa extra não são válidas.")
+        novas_pausas = {modo: validar_opcoes_pausa(opcoes, modo) for modo, opcoes in pausas.items()}
     destino = Path(caminho) if caminho is not None else caminho_cache()
     with bloquear_cache(destino):
         configuracao = ler_configuracao(destino)
@@ -207,6 +268,21 @@ def salvar_tempos(manual, lista, caminho=None):
             configuracao.add_section("tempos")
         for modo, segundos in tempos.items():
             configuracao.set("tempos", modo, str(segundos))
+        for modo, opcoes in novas_pausas.items():
+            try:
+                antigas = opcoes_pausa_configuracao(configuracao, modo)
+            except ErroConsulta:
+                antigas = None
+            secao = "pausa_" + modo
+            if not configuracao.has_section(secao):
+                configuracao.add_section(secao)
+            configuracao.set(secao, "ativa", "1" if opcoes["ativa"] else "0")
+            configuracao.set(secao, "a_cada", str(opcoes["a_cada"]))
+            configuracao.set(secao, "duracao", str(opcoes["duracao"]))
+            if antigas != opcoes:
+                configuracao.set(secao, "contador", "0")
+                configuracao.set(secao, "pausa_ate", "0")
+                configuracao.set(secao, "marcador", "")
         gravar_configuracao(configuracao, destino)
     return tempos
 
@@ -238,7 +314,10 @@ def segundos_ate_liberar(caminho=None, agora=None, modo="manual"):
     if modo not in TEMPOS_PADRAO:
         raise ErroConsulta("O modo de consulta não é válido.")
     tempos = tempos_configuracao(configuracao)
-    return espera_historico(historico_ativo(configuracao, agora), agora, tempos[modo])
+    base = espera_historico(historico_ativo(configuracao, agora), agora, tempos[modo])
+    pausa = estado_pausa_configuracao(configuracao, modo)
+    extra = max(0, math.ceil(pausa["pausa_ate"] - agora)) if pausa["ativa"] else 0
+    return max(base, extra)
 
 
 def registrar_consulta(caminho=None, agora=None, modo="manual"):
@@ -249,14 +328,47 @@ def registrar_consulta(caminho=None, agora=None, modo="manual"):
         if modo not in TEMPOS_PADRAO:
             raise ErroConsulta("O modo de consulta não é válido.")
         tempos = tempos_configuracao(configuracao)
+        pausa = estado_pausa_configuracao(configuracao, modo)
         agora = time.time() if agora is None else agora
         horarios = historico_ativo(configuracao, agora)
-        espera = espera_historico(horarios, agora, tempos[modo])
+        base = espera_historico(horarios, agora, tempos[modo])
+        extra = max(0, math.ceil(pausa["pausa_ate"] - agora)) if pausa["ativa"] else 0
+        espera = max(base, extra)
         if espera:
             raise LimiteConsultas(espera)
         if not configuracao.has_section("limite"):
             configuracao.add_section("limite")
         configuracao.set("limite", "timestamps", json.dumps([agora]))
+        marcador = None
+        if pausa["ativa"]:
+            secao = "pausa_" + modo
+            if not configuracao.has_section(secao):
+                configuracao.add_section(secao)
+            contador = pausa["contador"] + 1
+            if contador >= pausa["a_cada"]:
+                contador = 0
+                configuracao.set(secao, "pausa_ate", repr(agora + tempos[modo] + pausa["duracao"]))
+                configuracao.set(secao, "marcador", repr(agora))
+                marcador = {"modo": modo, "envio": agora}
+            configuracao.set(secao, "contador", str(contador))
+        gravar_configuracao(configuracao, destino)
+        return marcador
+
+
+def finalizar_pausa_extra(marcador, caminho=None, agora=None):
+    if marcador is None:
+        return
+    modo = marcador["modo"]
+    destino = Path(caminho) if caminho is not None else caminho_cache()
+    agora = time.time() if agora is None else agora
+    with bloquear_cache(destino):
+        configuracao = ler_configuracao(destino)
+        pausa = estado_pausa_configuracao(configuracao, modo)
+        if not pausa["ativa"] or pausa["marcador"] != marcador["envio"]:
+            return
+        secao = "pausa_" + modo
+        configuracao.set(secao, "pausa_ate", repr(max(pausa["pausa_ate"], agora + pausa["duracao"])))
+        configuracao.set(secao, "marcador", "")
         gravar_configuracao(configuracao, destino)
 
 
@@ -586,6 +698,8 @@ class Aplicativo:
         self.pendencia_resultado = None
         self.janela_configuracoes = None
         self.botao_salvar_config = None
+        self.marcador_pausa_em_consulta = None
+        self.pendencias_pausa = {}
         janela.title("Consultar Pix")
         janela.geometry("720x850")
         janela.minsize(600, 760)
@@ -744,11 +858,37 @@ class Aplicativo:
         campo_manual.grid(row=0, column=1, sticky="ew", pady=(0, 10))
         ttk.Label(quadro, text="Lista automática (segundos)").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(0, 12))
         ttk.Entry(quadro, textvariable=lista, width=12).grid(row=1, column=1, sticky="ew", pady=(0, 12))
-        ttk.Label(quadro, text="Informe números inteiros de 1 a 86400 segundos.\nContagem a partir do último envio, inclusive ao trocar modo.", style="Ajuda.TLabel", wraplength=440).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        variaveis_pausas = {}
+        for indice, (modo, nome) in enumerate((("manual", "Consulta manual"), ("lista", "Lista automática")), start=2):
+            grupo = ttk.LabelFrame(quadro, text=nome + " — pausa extra", padding=10)
+            grupo.grid(row=indice, column=0, columnspan=2, sticky="ew", pady=(0, 12))
+            grupo.columnconfigure(1, weight=1)
+            secao = "pausa_" + modo
+            ativa = tk.BooleanVar(value=configuracao.get(secao, "ativa", fallback="0").strip().lower() in ("1", "true", "yes", "on"))
+            a_cada = tk.StringVar(value=configuracao.get(secao, "a_cada", fallback=str(PAUSA_PADRAO["a_cada"])))
+            duracao = tk.StringVar(value=configuracao.get(secao, "duracao", fallback=str(PAUSA_PADRAO["duracao"])))
+            ttk.Label(grupo, text="A cada (consultas)").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(5, 5))
+            campo_quantidade = ttk.Entry(grupo, textvariable=a_cada, width=12)
+            campo_quantidade.grid(row=1, column=1, sticky="ew", pady=(5, 5))
+            ttk.Label(grupo, text="Pausa extra (segundos)").grid(row=2, column=0, sticky="w", padx=(0, 12))
+            campo_duracao = ttk.Entry(grupo, textvariable=duracao, width=12)
+            campo_duracao.grid(row=2, column=1, sticky="ew")
+
+            def atualizar_campos(variavel=ativa, quantidade=campo_quantidade, tempo=campo_duracao):
+                estado = "normal" if variavel.get() else "disabled"
+                quantidade.configure(state=estado)
+                tempo.configure(state=estado)
+
+            ttk.Checkbutton(grupo, text="Ativar pausa extra", variable=ativa, command=atualizar_campos).grid(row=0, column=0, columnspan=2, sticky="w")
+            atualizar_campos()
+            variaveis_pausas[modo] = {"ativa": ativa, "a_cada": a_cada, "duracao": duracao}
+        ttk.Label(quadro, text="Informe intervalos e pausas de 1 a 86400 segundos.\nContagem a partir do último envio, inclusive ao trocar modo.\nEm cada modo: a cada X envios, acrescentar Y segundos ao intervalo.", style="Ajuda.TLabel", wraplength=440).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
         mensagem = ttk.Label(quadro, text="", foreground="#a13d29", wraplength=440)
-        mensagem.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        mensagem.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 12))
         try:
             tempos_configuracao(configuracao)
+            for modo in TEMPOS_PADRAO:
+                opcoes_pausa_configuracao(configuracao, modo)
         except ErroConsulta as erro:
             mensagem.configure(text=str(erro))
 
@@ -763,7 +903,9 @@ class Aplicativo:
                 mensagem.configure(text="Aguarde a consulta em andamento terminar antes de salvar os tempos.")
                 return "break"
             try:
-                salvar_tempos(manual.get(), lista.get())
+                pausas = {modo: {"ativa": campos["ativa"].get(), "a_cada": campos["a_cada"].get(),
+                                 "duracao": campos["duracao"].get()} for modo, campos in variaveis_pausas.items()}
+                salvar_tempos(manual.get(), lista.get(), pausas=pausas)
             except ErroConsulta as erro:
                 mensagem.configure(text=str(erro))
                 return "break"
@@ -775,7 +917,7 @@ class Aplicativo:
             return "break"
 
         botoes = ttk.Frame(quadro)
-        botoes.grid(row=4, column=0, columnspan=2, sticky="e")
+        botoes.grid(row=6, column=0, columnspan=2, sticky="e")
         ttk.Button(botoes, text="Cancelar", command=fechar).pack(side="left", padx=(0, 8))
         self.botao_salvar_config = ttk.Button(botoes, text="Salvar", command=salvar,
                                             state="disabled" if self.ocupado else "normal")
@@ -893,6 +1035,13 @@ class Aplicativo:
         self.lista.set(item, "resultado", pendencia["status"])
         self.pendencia_resultado = None
 
+    def resolver_pausa_pendente(self, modo):
+        pendencia = self.pendencias_pausa.get(modo)
+        if pendencia is None:
+            return
+        finalizar_pausa_extra(pendencia, agora=pendencia["resposta_em"])
+        self.pendencias_pausa.pop(modo, None)
+
     def atualizar_progresso_lista(self, complemento=""):
         total = len(self.registros_lista)
         concluidos = len(self.lista_finalizados.intersection(self.registros_lista))
@@ -932,6 +1081,12 @@ class Aplicativo:
                 self.pausar_lista("Pausada: conclusão local pendente")
                 self.status.configure(text=str(erro), foreground="#a13d29")
                 return
+        try:
+            self.resolver_pausa_pendente("lista")
+        except ErroConsulta as erro:
+            self.pausar_lista("Pausada: atualização da pausa extra pendente")
+            self.status.configure(text=str(erro), foreground="#a13d29")
+            return
         if all(item in self.lista_finalizados for item in self.registros_lista):
             self.atualizar_progresso_lista("Lista concluída")
             self.status.configure(text="Esta lista já foi processada. Abra um TXT para iniciar uma nova lista.", foreground=COR_SUCESSO_SUAVE)
@@ -1042,6 +1197,14 @@ class Aplicativo:
                 self.atualizar_progresso_lista("Conclusão local recuperada; nenhuma nova consulta enviada")
                 self.status.configure(text="Resultado pendente concluído localmente, sem repetir a consulta.", foreground=COR_SUCESSO_SUAVE)
             return
+        modo_envio = "lista" if automatico or self.modo_lista() else "manual"
+        try:
+            self.resolver_pausa_pendente(modo_envio)
+        except ErroConsulta as erro:
+            if automatico:
+                self.pausar_lista("Pausada: atualização da pausa extra pendente")
+            self.status.configure(text=str(erro), foreground="#a13d29")
+            return
         item_lista = None
         validado = False
         try:
@@ -1065,7 +1228,7 @@ class Aplicativo:
             validado = True
             if item_lista:
                 self.preparar_saida_lista()
-            registrar_consulta(modo="lista" if automatico or item_lista else "manual")
+            marcador_pausa = registrar_consulta(modo=modo_envio)
         except LimiteConsultas as erro:
             self.status.configure(text=str(erro), foreground="#775d2b")
             self.atualizar_limite(reagendar=False)
@@ -1097,6 +1260,7 @@ class Aplicativo:
         self.item_em_consulta = item_lista
         self.tipo_em_consulta = tipo
         self.consulta_automatica_em_curso = automatico
+        self.marcador_pausa_em_consulta = marcador_pausa
         if item_lista:
             self.lista.set(item_lista, "resultado", "Consultando…")
         if hasattr(self, "botao_abrir_lista"):
@@ -1138,6 +1302,18 @@ class Aplicativo:
             pass
         else:
             self.ocupado = False
+            falha_pausa = False
+            avisos_finais = []
+            marcador = self.marcador_pausa_em_consulta
+            self.marcador_pausa_em_consulta = None
+            if marcador is not None:
+                marcador = dict(marcador, resposta_em=time.time())
+                self.pendencias_pausa[marcador["modo"]] = marcador
+                try:
+                    self.resolver_pausa_pendente(marcador["modo"])
+                except ErroConsulta as erro:
+                    falha_pausa = True
+                    avisos_finais.append(str(erro))
             self.botao.configure(state="normal", text="Consultar")
             self.tipo.configure(state="readonly")
             self.chave.configure(state="normal")
@@ -1165,6 +1341,7 @@ class Aplicativo:
                     self.concluir_resultado_pendente()
                 except (ErroConsulta, ErroImportacaoLista) as erro:
                     falha_local = True
+                    avisos_finais.append(str(erro))
                     self.lista.set(item_lista, "resultado", "Confira gravação/origem")
                     self.pausar_lista("Pausada: confira o arquivo de resultados e o TXT original")
                     self.status.configure(text=str(erro), foreground="#a13d29")
@@ -1172,7 +1349,11 @@ class Aplicativo:
             self.item_em_consulta = None
             automatico = getattr(self, "consulta_automatica_em_curso", False)
             self.consulta_automatica_em_curso = False
-            if automatico and resultado not in ("sucesso", "sem_cadastro") and not falha_local:
+            if falha_pausa:
+                self.pausar_lista("Pausada: não foi possível atualizar a pausa extra")
+                self.status.configure(text="Resultado recebido; atualização da pausa extra pendente. Confira os detalhes abaixo.", foreground="#a13d29")
+                self.escrever(texto + "\n\n" + "\n\n".join(avisos_finais))
+            if automatico and resultado not in ("sucesso", "sem_cadastro") and not falha_local and not falha_pausa:
                 self.pausar_lista("Pausada após erro. Confira o resultado antes de retomar.")
             if hasattr(self, "botao_lista"):
                 self.atualizar_controles_lista()
