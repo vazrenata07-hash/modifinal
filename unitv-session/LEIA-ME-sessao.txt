@@ -1,0 +1,17 @@
+UniTV 5.9.0 - correção de falso conflito em falha de rede
+
+Escopo concreto:
+No método xc/a1$c.onError(Throwable), qualquer exceção de heartbeat era encaminhada para qc/s0.c(""). No caminho RemoteLoginEvent, esse callback abre RemoteLoginDialog por meio de com/module/basemvp/a$c e y8/c$a. Não havia distinção entre indisponibilidade de rede e resposta de rejeição do serviço.
+
+Alteração:
+IOException (incluindo falha de conexão, DNS e timeout de socket) e TimeoutException passam a reagendar o heartbeat após 30 segundos e retornam sem acionar o callback de login remoto. O tratamento de resposta explícita do servidor e os códigos de erro de autenticação foram preservados. Os logs UniTVSession registram somente a classe da exceção ou o returnCode, sem usuário, token, senha ou URL. Códigos do tratamento de reprodução c3 também são registrados.
+A correção anterior de identificação por instalação foi mantida.
+
+Limites:
+Esta correção trata um falso positivo local verificável no código. Não há comprovação de que a queda nos dois aparelhos percorra esse caminho. Se a segunda sessão revogar a primeira no servidor, esta modificação não concede duas sessões e não restaura um token revogado. Os códigos aaa100027/aaa100028 e portal100054 aparecem nos caminhos associados ao texto da foto; aaa100083 abre o tratamento de login remoto. Sem o código observado na queda, não é possível distinguir os caminhos da foto.
+
+Validação a cargo do usuário:
+Nenhum teste do app foi executado, nem login ou conexão ao serviço. Compilação, empacotamento e assinatura apenas. Para observar a causa durante sua reprodução do problema, use adb logcat -s UniTVSession:I '*:S' e guarde as linhas do momento da queda. A coleta não envia dados para serviços externos.
+
+Distribuição:
+Nova assinatura de desenvolvimento; pode exigir reinstalação e novo login. O pacote mantém manifesto, recursos, outros DEX e bibliotecas nativas da entrada. Apenas classes.dex é substituído.
