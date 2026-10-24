@@ -59,3 +59,26 @@
  
      .line 14
      .line 15
+--- a/smali/com/interactive/brasiliptv/app/LocalSessionPolicy.smali
++++ b/smali/com/interactive/brasiliptv/app/LocalSessionPolicy.smali
+@@ -43,8 +43,9 @@
+ .method public static acceptRemoteEvent()V
+     .locals 2
+     invoke-static {}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->clearLocalBlock()V
++    invoke-static {}, Lcom/interactive/brasiliptv/app/SilentRefresh;->onRemoteSessionEvent()V
+     const-string v0, "UniTVSession"
+-    const-string v1, "remote-login event consumed; enforcement check not started"
++    const-string v1, "remote-login event consumed; background recovery requested"
+     invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
+     return-void
+ .end method
+--- a/smali/xc/a1$c.smali
++++ b/smali/xc/a1$c.smali
+@@ -243,6 +243,7 @@
+     invoke-static {v0}, Lcom/interactive/brasiliptv/app/LocalSessionPolicy;->acceptCode(Ljava/lang/String;)Z
+     move-result v0
+     if-eqz v0, :local_session_original
++    invoke-static {}, Lcom/interactive/brasiliptv/app/SilentRefresh;->onRemoteSessionEvent()V
+     iget-object v0, p0, Lxc/a1$c;->d:Lxc/a1;
+     invoke-static {v0}, Lxc/a1;->d(Lxc/a1;)J
+     move-result-wide v2
