@@ -1,9 +1,10 @@
-name: UniTV - base inicial com somente checagem local
+name: UniTV - checagem local e validade
 on:
   push:
     paths:
       - '.github/workflows/unitv-id-unico.yml'
       - 'unitv-local/**'
+      - 'unitv-expiry/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -43,6 +44,7 @@ jobs:
           Path('work/source-before.json').write_text(json.dumps(hashes))
           PY
           (cd work/decoded && patch -p1 < ../../unitv-local/checagem-local.patch)
+          (cd work/decoded && patch -p1 < ../../unitv-expiry/validade-local.patch)
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json
@@ -53,6 +55,7 @@ jobs:
           expected = sorted([
               'smali/com/module/basemvp/a.smali',
               'smali/xc/a1$c.smali',
+              'smali/tc/a.smali',
               'smali/s8/k1.smali',
               'smali/v9/c.smali',
               'smali/com/main/ui/activity/HomeActivity.smali',
@@ -66,10 +69,12 @@ jobs:
               'patch': 'unitv-local/checagem-local.patch',
               'patch_sha256': hashlib.sha256(Path('unitv-local/checagem-local.patch').read_bytes()).hexdigest(),
               'modified_source_files': changed,
-              'other_session_patches_applied': [],
+              'additional_patch': 'unitv-expiry/validade-local.patch',
+              'additional_patch_sha256': hashlib.sha256(Path('unitv-expiry/validade-local.patch').read_bytes()).hexdigest(),
+              'earlier_mac_or_30_second_network_patches_applied': False,
               'application_tests_executed': False,
           }
-          Path('work/ORIGEM-base-inicial.json').write_text(json.dumps(report, indent=2) + '\n')
+          Path('work/ORIGEM-validade-local.json').write_text(json.dumps(report, indent=2) + '\n')
           PY
           java -jar work/apktool.jar b work/decoded -o work/rebuilt.apk
           python3 - <<'PY'
@@ -87,12 +92,12 @@ jobs:
         run: |
           java -jar work/signer.jar -a work/id-unico-unsigned.apk -o work/signed
           mkdir -p work/release
-          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-base-inicial-checagem-local.apk
-          cp unitv-local/LEIA-ME-checagem-local.txt unitv-local/checagem-local.patch work/release/
+          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-checagem-local-validade.apk
+          cp unitv-expiry/LEIA-ME-validade-local.txt unitv-expiry/validade-local.patch work/release/
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, zipfile
-          output = Path('work/release/UniTV-5.9.0-base-inicial-checagem-local.apk')
+          output = Path('work/release/UniTV-5.9.0-checagem-local-validade.apk')
           def is_signature(n):
               u = n.upper()
               return u.startswith('META-INF/') and (u.endswith(('.SF', '.RSA', '.DSA', '.EC')) or u == 'META-INF/MANIFEST.MF')
@@ -102,14 +107,14 @@ jobs:
           changed = sorted(n for n in set(ah) | set(bh) if ah.get(n) != bh.get(n))
           if changed != ['classes.dex']:
               raise SystemExit('Unexpected APK content changes: ' + repr(changed))
-          report = json.loads(Path('work/ORIGEM-base-inicial.json').read_text())
+          report = json.loads(Path('work/ORIGEM-validade-local.json').read_text())
           report['modified_apk_entries_excluding_signatures'] = changed
           report['output_sha256'] = hashlib.sha256(output.read_bytes()).hexdigest()
-          Path('work/release/ORIGEM-base-inicial.json').write_text(json.dumps(report, indent=2) + '\n')
+          Path('work/release/ORIGEM-validade-local.json').write_text(json.dumps(report, indent=2) + '\n')
           PY
-          (cd work/release && sha256sum *.apk > SHA256-base-inicial-checagem-local.txt)
+          (cd work/release && sha256sum *.apk > SHA256-checagem-local-validade.txt)
       - name: Publicar na release indicada pelo usuario
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-base-inicial-checagem-local.apk work/release/LEIA-ME-checagem-local.txt work/release/checagem-local.patch work/release/SHA256-base-inicial-checagem-local.txt work/release/ORIGEM-base-inicial.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-checagem-local-validade.apk work/release/LEIA-ME-validade-local.txt work/release/validade-local.patch work/release/SHA256-checagem-local-validade.txt work/release/ORIGEM-validade-local.json --repo "$GITHUB_REPOSITORY" --clobber
