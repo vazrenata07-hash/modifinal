@@ -1,0 +1,14 @@
+UniTV 5.9.0 - checagem local e bloqueio de validade local
+Base: UniTV-5.9.0-teste-atualizacao-mac.apk da release 1.0.0.1.
+SHA-256 de entrada: 06840eb065080381d740f3cf5cc7c24d5121da7b5ba0d2f9eb6d09fb11894765.
+
+Inclui o ultimo patch de checagem local, mais uma unica alteracao em tc/a.onSubscribe:
+O observador guardava o Disposable e, quando o prazo local zc/f0.p() ja havia vencido, publicava UserTokenInvalidEvent e chamava dispose(), cancelando a requisicao. Isso tambem podia impedir novas consultas e tentativas de renovacao pelo heartbeat.
+Agora a inscricao e mantida. Quando esse prazo local vence, o app registra o evento em UniTVSession e deixa a requisicao prosseguir com as credenciais existentes. Nenhum token e criado ou substituido, e o relogio de validade nao e estendido artificialmente.
+
+Nao inclui os patches anteriores de MAC por instalacao nem a reconexao fixa a cada 30 segundos. Token, identificador, config, recursos, manifesto, bibliotecas e outros DEX permanecem como na entrada, exceto pelas alteracoes de codigo descritas.
+A assinatura de desenvolvimento muda em relacao ao APK inicial.
+
+Limites:
+O bloqueio local por prazo foi confirmado no codigo. Ainda nao foi confirmado em execucao que seja o motivo das abas pararem nos aparelhos do usuario. Se o servidor rejeitar efetivamente a credencial, deixar a requisicao seguir nao concede autorizacao nem dados de catalogo.
+Nenhum teste do aplicativo foi executado. Apenas compilacao, empacotamento, assinatura e conferencia estatica das diferencas.
