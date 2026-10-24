@@ -1,0 +1,17 @@
+UniTV 5.9.0 - checagem local de sessao
+Base: APK da release 1.0.0.1, SHA-256 06840eb065080381d740f3cf5cc7c24d5121da7b5ba0d2f9eb6d09fb11894765.
+
+Alteracoes locais:
+- com/module/basemvp/a.onEventRemoteLogin consome e remove o evento sticky, limpa o indicador local de bloqueio e retorna sem iniciar a verificacao extraordinaria de heartbeat.
+- LocalSessionPolicy.acceptCode reconhece aaa100027, aaa100028, aaa100083 e portal100054. Os codigos aparecem nos caminhos que acionam bloqueio, login remoto ou a mensagem de acesso da foto; nao foi estabelecido o significado de cada codigo no servidor.
+- com/module/basemvp/a.c3, HomeActivity.n4, s8/k1.Ha e v9/c.q9 ignoram esses codigos antes de acionar o tratamento local correspondente.
+- xc/a1$c.onError, ao receber ResultException com um desses codigos, limpa o indicador local e reagenda o heartbeat no intervalo existente, sem executar seu callback de erro de sessao. Renovacao e armazenamento de tokens em respostas de sucesso permanecem.
+- Registro local UniTVSession informa somente o codigo tratado, sem credenciais.
+
+Esta versao preserva o token, usuario, identificador e a configuracao original. Nao inclui as alteracoes anteriores de MAC por instalacao nem a mudanca de intervalo por falha de rede.
+
+Limites concretos:
+A alteracao ignora a reacao local nos caminhos identificados. Nao transforma uma resposta sem dados em uma resposta com video, nao fabrica tokens e nao altera o servidor. Se o servidor invalidar o token, negar URLs ou interromper a transmissao, a alteracao local nao garante continuidade. Tambem nao e possivel afirmar, sem execucao, que todos os caminhos protegidos/nativos foram cobertos.
+Nenhum teste do aplicativo foi executado. Apenas compilacao, empacotamento e assinatura. A validacao simultanea nos dois aparelhos e realizada pelo usuario.
+
+Assinatura de desenvolvimento: pode exigir reinstalacao em relacao ao APK original. A mesma chave de desenvolvimento foi usada nas versoes produzidas nesta conversa.
