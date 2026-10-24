@@ -1,0 +1,22 @@
+UniTV 5.9.0 - alternativa com recuperacao automatica de sessao
+Base: APK inicial da release 1.0.0.1, mais checagem-local.patch e validade-local.patch.
+A versao anterior sem esta recuperacao permanece publicada separadamente.
+
+Funcionamento implementado:
+- Intercepta somente consultas de catalogo e inicio de VOD da lista explicita SilentRefresh.READS.
+- Para aaa100027, aaa100028, aaa100083 ou portal100054, tanto em ResultException quanto em retorno estruturado, solicita uma nova autenticacao pelo mesmo caminho interno usado na inicializacao do app.
+- Nao inicia uma Activity. Reutiliza as credenciais/configuracao existentes e permite que a rotina original receba e armazene o resultado real do servidor.
+- Consultas concorrentes compartilham uma autenticacao em andamento. Uma nova autenticacao pode comecar no maximo uma vez a cada 60 segundos por processo.
+- A espera pela autenticacao e limitada a 12 segundos, sem bloquear a thread da interface. Esse limite encerra a espera local e nao garante cancelamento de uma requisicao de autenticacao ja enviada.
+- Apos sucesso, atualiza userId/userToken do objeto da consulta original e a repete uma unica vez, em thread de IO. Nao cria ciclo de repeticao.
+- Se outra consulta ja atualizou o token, tenta repetir usando o token mais recente sem iniciar outro login.
+- Nao repete compras, alteracoes de conta, logout nem as proprias requisicoes de autenticacao.
+- Falhas genericas de rede nao iniciam relogin.
+
+Limites:
+Nao foi executado teste do app. Compilacao, assinatura e conferencia estatica nao demonstram que a rotina nativa de autenticacao funcione neste novo contexto em todos os aparelhos. A recuperacao depende das credenciais salvas e da resposta real do servidor.
+Nao e possivel garantir rapidez imperceptivel, continuidade do video nem duas sessoes simultaneas. Se uma autenticacao derrubar a outra sessao, pode haver novas quedas; o limite de tentativas reduz repeticoes, mas nao remove a regra do servidor.
+Somente classes.dex e classes2.dex, alem das assinaturas, sao substituidos. A compilacao usa stubs apenas como referencias; eles nao sao incluidos no APK. Bibliotecas, recursos, manifesto e classes3.dex permanecem da entrada.
+Logs UniTVSession registram eventos de recuperacao sem credenciais.
+
+Fontes: unitv-autorefresh/SilentRefresh.java, build_helper.py e autorefresh.patch.
