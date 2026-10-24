@@ -1,0 +1,11 @@
+UniTV 5.9.0 - identificação por instalação
+
+Entrada: release 1.0.0.1, SHA-256 06840eb065080381d740f3cf5cc7c24d5121da7b5ba0d2f9eb6d09fb11894765.
+Encontrado: 12 métodos em n3/k e zc/v retornavam MAC fixo 02:00:00:00:00:00 ou equivalente compacto. n3/k.h é usado no macAddr de requisições.
+Alterado: todos esses métodos consultam um identificador local em formato MAC, derivado de UUID aleatório e persistido em SharedPreferences. Ele permanece estável entre requisições e reinícios. Limpar dados ou reinstalar cria outro identificador. Instalações separadas geram valores independentes; não copie os dados privados de uma instalação para outra.
+Inicialização: AppWrapper.attachBaseContext inicializa o identificador antes de chamar a implementação herdada.
+Empacotamento: somente classes.dex substituído; demais DEX, manifesto, recursos e bibliotecas nativas preservados do APK de entrada. APK alinhado e assinado com chave de desenvolvimento diferente da original. O Android pode exigir desinstalação da versão anterior, que apaga os dados locais; pode ser necessário entrar na conta novamente.
+Não foram executados testes nem iniciado o aplicativo. Compilação e assinatura concluídas. O assinador confirmou a assinatura e o alinhamento do pacote.
+Limitação: a mensagem cdn_ee2 é usada em caminhos para aaa100027, aaa100028 e portal100054. A inspeção estática não prova qual retorno ocorreu na foto. A alteração corrige a identificação constante, mas não remove decisões nem limites de sessão impostos pelo servidor, e o comportamento das proteções nativas não foi validado em execução.
+
+Experimental: esta alteração não demonstrou resolver a queda de duas sessões da mesma conta. Caso a restrição seja por usuário no servidor, IDs distintos não a removem.
