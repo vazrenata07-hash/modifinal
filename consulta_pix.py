@@ -67,8 +67,7 @@ class ConsultaInconclusiva(ErroConsulta):
 class LimiteConsultas(ErroConsulta):
     def __init__(self, segundos):
         self.segundos = segundos
-        minutos, resto = divmod(segundos, 60)
-        super().__init__(f"Aguarde {minutos:02d}:{resto:02d} para consultar novamente.")
+        super().__init__(f"Aguarde {segundos} segundos para consultar novamente.")
 
 
 def caminho_cache():
@@ -307,7 +306,7 @@ def espera_historico(horarios, agora, intervalo=INTERVALO_CONSULTAS):
     return max(0, math.ceil(horarios[-1] + intervalo - agora))
 
 
-def segundos_ate_liberar(caminho=None, agora=None, modo="manual"):
+def detalhes_espera(caminho=None, agora=None, modo="manual"):
     destino = Path(caminho) if caminho is not None else caminho_cache()
     agora = time.time() if agora is None else agora
     configuracao = ler_configuracao(destino)
@@ -317,7 +316,25 @@ def segundos_ate_liberar(caminho=None, agora=None, modo="manual"):
     base = espera_historico(historico_ativo(configuracao, agora), agora, tempos[modo])
     pausa = estado_pausa_configuracao(configuracao, modo)
     extra = max(0, math.ceil(pausa["pausa_ate"] - agora)) if pausa["ativa"] else 0
-    return max(base, extra)
+    return {"total": max(base, extra), "base": base, "extra": extra,
+            "extra_ativa": extra > base, "intervalo": tempos[modo],
+            "pausa_ativa": pausa["ativa"], "a_cada": pausa["a_cada"],
+            "duracao_extra": pausa["duracao"], "contador": pausa["contador"],
+            "ciclo_exibido": pausa["a_cada"] if extra > 0 else pausa["contador"]}
+
+
+def segundos_ate_liberar(caminho=None, agora=None, modo="manual"):
+    return detalhes_espera(caminho=caminho, agora=agora, modo=modo)["total"]
+
+
+def resumo_temporizacao(detalhes):
+    texto = f"Intervalo salvo: {detalhes['intervalo']} segundos; "
+    if detalhes["pausa_ativa"]:
+        texto += (f"pausa extra: {detalhes['duracao_extra']} segundos a cada {detalhes['a_cada']} consultas; "
+                  f"ciclo atual: {detalhes['ciclo_exibido']}/{detalhes['a_cada']}.")
+    else:
+        texto += "pausa extra desativada."
+    return texto
 
 
 def registrar_consulta(caminho=None, agora=None, modo="manual"):
@@ -375,6 +392,51 @@ def finalizar_pausa_extra(marcador, caminho=None, agora=None):
 def chave_associacao_lista(origem):
     canonico = os.path.normcase(str(Path(origem).resolve()))
     return hashlib.sha256(canonico.encode("utf-8")).hexdigest()
+
+
+def identidade_ciclo_lista(origem):
+    try:
+        verificar_origem(origem)
+    except ErroImportacaoLista as erro:
+        raise ErroConsulta(str(erro)) from None
+    canonico = os.path.normcase(str(origem.caminho.resolve()))
+    resumo = hashlib.sha256(origem.esperado).hexdigest()
+    return canonico, resumo
+
+
+def preparar_ciclo_lista(origem, caminho=None):
+    """Uma lista nova inicia seu ciclo; o mesmo TXT pendente o continua."""
+    canonico, resumo = identidade_ciclo_lista(origem)
+    destino = Path(caminho) if caminho is not None else caminho_cache()
+    with bloquear_cache(destino):
+        configuracao = ler_configuracao(destino)
+        origem_salva = configuracao.get("pausa_lista", "origem", fallback="")
+        resumo_salvo = configuracao.get("pausa_lista", "hash_pendente", fallback="")
+        if origem_salva == canonico and resumo_salvo == resumo:
+            return False
+        if not configuracao.has_section("pausa_lista"):
+            configuracao.add_section("pausa_lista")
+        configuracao.set("pausa_lista", "contador", "0")
+        configuracao.set("pausa_lista", "pausa_ate", "0")
+        configuracao.set("pausa_lista", "marcador", "")
+        configuracao.set("pausa_lista", "origem", canonico)
+        configuracao.set("pausa_lista", "hash_pendente", resumo)
+        gravar_configuracao(configuracao, destino)
+    return True
+
+
+def sincronizar_ciclo_lista(origem, caminho=None):
+    """Atualize só o hash após remoção; preserve o ciclo e a pausa em curso."""
+    canonico, resumo = identidade_ciclo_lista(origem)
+    destino = Path(caminho) if caminho is not None else caminho_cache()
+    with bloquear_cache(destino):
+        configuracao = ler_configuracao(destino)
+        if configuracao.get("pausa_lista", "origem", fallback="") != canonico:
+            raise ErroConsulta("A lista associada ao contador foi alterada. O resultado foi mantido; confira o cache.ini antes de continuar.")
+        if configuracao.get("pausa_lista", "hash_pendente", fallback="") == resumo:
+            return
+        configuracao.set("pausa_lista", "hash_pendente", resumo)
+        gravar_configuracao(configuracao, destino)
 
 
 def carregar_saida_associada(origem):
@@ -829,6 +891,8 @@ class Aplicativo:
         self.progresso_lista.grid(row=3, column=0, sticky="w", pady=(4, 0))
         self.rotulo_saida = ttk.Label(self.aba_lista, text="O TXT de CPFs sem Pix será criado ao iniciar a lista.", style="Ajuda.TLabel", wraplength=600)
         self.rotulo_saida.grid(row=4, column=0, sticky="w", pady=(4, 0))
+        self.temporizacao_lista = ttk.Label(self.aba_lista, text="", style="Ajuda.TLabel", wraplength=600)
+        self.temporizacao_lista.grid(row=5, column=0, sticky="w", pady=(4, 0))
 
     def modo_lista(self):
         return hasattr(self, "abas") and self.abas.select() == str(self.aba_lista)
@@ -882,7 +946,12 @@ class Aplicativo:
             ttk.Checkbutton(grupo, text="Ativar pausa extra", variable=ativa, command=atualizar_campos).grid(row=0, column=0, columnspan=2, sticky="w")
             atualizar_campos()
             variaveis_pausas[modo] = {"ativa": ativa, "a_cada": a_cada, "duracao": duracao}
-        ttk.Label(quadro, text="Informe intervalos e pausas de 1 a 86400 segundos.\nContagem a partir do último envio, inclusive ao trocar modo.\nEm cada modo: a cada X envios, acrescentar Y segundos ao intervalo.", style="Ajuda.TLabel", wraplength=440).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
+            try:
+                resumo_salvo = resumo_temporizacao(detalhes_espera(modo=modo))
+            except ErroConsulta:
+                resumo_salvo = "Corrija os valores salvos para visualizar a temporização efetiva."
+            ttk.Label(grupo, text=resumo_salvo, style="Ajuda.TLabel", wraplength=420).grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(quadro, text="Informe intervalos e pausas de 1 a 86400 segundos.\nContagem a partir do último envio, inclusive ao trocar modo.\nEm cada modo: a cada X envios, acrescentar Y segundos ao intervalo.\nManual: ciclo mantido entre sessões.\nLista: continua no mesmo TXT pendente; uma nova lista começa em zero.", style="Ajuda.TLabel", wraplength=440).grid(row=4, column=0, columnspan=2, sticky="w", pady=(0, 10))
         mensagem = ttk.Label(quadro, text="", foreground="#a13d29", wraplength=440)
         mensagem.grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, 12))
         try:
@@ -968,6 +1037,11 @@ class Aplicativo:
                 self.arquivo_resultados = None
                 self.associacao_persistida = False
                 self.erro_saida_associada = None
+                erro_ciclo = None
+                try:
+                    preparar_ciclo_lista(self.origem_lista)
+                except ErroConsulta as erro:
+                    erro_ciclo = str(erro)
                 try:
                     anterior = carregar_saida_associada(self.origem_lista.caminho)
                 except ErroConsulta as erro:
@@ -988,6 +1062,9 @@ class Aplicativo:
                     self.lista.insert("", "end", iid=item, values=(registro.linha, registro.numero, "Não consultado"))
                 self.resumo_lista.configure(text=f"{len(retorno.registros)} linhas identificadas. Ignoradas: {retorno.ambiguas} ambíguas e {retorno.sem_numero} sem conjunto de 11 dígitos. Clique em Iniciar lista.")
                 self.atualizar_progresso_lista()
+                if erro_ciclo:
+                    self.status.configure(text=erro_ciclo, foreground="#a13d29")
+                    self.atualizar_progresso_lista("Corrija o cache ou o TXT antes de iniciar")
             else:
                 self.resumo_lista.configure(text=retorno)
             self.atualizar_controles_lista()
@@ -1002,6 +1079,7 @@ class Aplicativo:
             verificar_origem(self.origem_lista)
         except ErroImportacaoLista as erro:
             raise ErroConsulta(str(erro)) from None
+        preparar_ciclo_lista(self.origem_lista)
         if self.arquivo_resultados is None:
             self.arquivo_resultados = criar_saida_resultados(self.origem_lista.caminho)
             self.associacao_persistida = False
@@ -1031,6 +1109,7 @@ class Aplicativo:
             pendencia["saida_gravada"] = True
         if pendencia["resultado"] in ("sucesso", "sem_cadastro"):
             remover_linha_consultada(self.origem_lista, self.registros_lista[item].linha)
+            sincronizar_ciclo_lista(self.origem_lista)
         self.lista_finalizados.add(item)
         self.lista.set(item, "resultado", pendencia["status"])
         self.pendencia_resultado = None
@@ -1094,6 +1173,7 @@ class Aplicativo:
         try:
             self.token_lista = validar_token(self.token.get())
             self.tipo_lista_capturado = TIPOS[self.tipo_lista.get()]
+            preparar_ciclo_lista(self.origem_lista)
             segundos_ate_liberar(modo="lista")
             self.preparar_saida_lista()
         except (ErroConsulta, KeyError) as erro:
@@ -1130,14 +1210,15 @@ class Aplicativo:
             self.status.configure(text="Lista concluída.", foreground=COR_SUCESSO_SUAVE)
             return
         try:
-            segundos = segundos_ate_liberar(modo="lista")
+            detalhes = detalhes_espera(modo="lista")
+            segundos = detalhes["total"]
         except ErroConsulta as erro:
             self.pausar_lista("Pausada: não foi possível ler o intervalo")
             self.status.configure(text=str(erro), foreground="#a13d29")
             return
         if segundos:
-            minutos, resto = divmod(segundos, 60)
-            self.atualizar_progresso_lista(f"Próxima consulta em {minutos:02d}:{resto:02d}")
+            motivo = " — pausa extra ativa" if detalhes["extra_ativa"] else " — intervalo normal"
+            self.atualizar_progresso_lista(f"Próxima consulta em {segundos} segundos{motivo}")
             self.agendamento_lista = self.janela.after(1000, self.proximo_item_lista)
             return
         item = pendentes[0]
@@ -1169,11 +1250,19 @@ class Aplicativo:
                 self.status.configure(text=str(erro), foreground="#a13d29")
             else:
                 if segundos:
-                    minutos, resto = divmod(segundos, 60)
-                    self.botao.configure(state="disabled", text=f"Consultar ({minutos:02d}:{resto:02d})")
+                    self.botao.configure(state="disabled", text=f"Consultar ({segundos} segundos)")
                 else:
                     self.botao.configure(state="disabled" if getattr(self, "lista_ativa", False) else "normal",
                                           text="Lista em andamento" if getattr(self, "lista_ativa", False) else "Consultar selecionado" if self.modo_lista() else "Consultar")
+        if hasattr(self, "temporizacao_lista"):
+            try:
+                detalhes = detalhes_espera(modo="lista")
+                texto = resumo_temporizacao(detalhes) + " O ciclo continua no mesmo TXT pendente. Uma nova lista começa em zero."
+                if detalhes["extra_ativa"]:
+                    texto += f" Pausa extra ativa: {detalhes['total']} segundos de espera restante."
+                self.temporizacao_lista.configure(text=texto)
+            except ErroConsulta as erro:
+                self.temporizacao_lista.configure(text=str(erro))
         if reagendar:
             self.janela.after(1000, self.atualizar_limite)
 
