@@ -124,3 +124,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release upload 1.0.0.1 work/release/UniTV-5.9.0-autorefresh-alternativo.apk work/release/LEIA-ME-autorefresh.txt work/release/autorefresh.patch work/release/SHA256-autorefresh.txt work/release/ORIGEM-autorefresh.json --repo "$GITHUB_REPOSITORY" --clobber
+# Build revision: remote-session-triggers
