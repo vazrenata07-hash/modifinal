@@ -36,6 +36,7 @@ COR_SUCESSO_SUAVE = "#4d8268"
 FUNDO_SUCESSO_SUAVE = "#edf7ef"
 MAX_CONSULTAS = 1
 INTERVALO_CONSULTAS = 61
+TEMPOS_PADRAO = {"manual": 61, "lista": 61}
 FORMATO_SAIDA = "cpf_sem_pix_sucesso_v1"
 
 
@@ -174,6 +175,42 @@ def salvar_token(token, caminho=None):
         gravar_configuracao(configuracao, destino)
 
 
+def validar_tempo(valor, modo):
+    texto = str(valor).strip()
+    if not re.fullmatch(r"[0-9]+", texto):
+        raise ErroConsulta(f"O tempo de {'consulta manual' if modo == 'manual' else 'lista automática'} deve ser um número inteiro de 1 a 86400 segundos.")
+    try:
+        segundos = int(texto)
+    except ValueError:
+        raise ErroConsulta("Informe tempos inteiros de 1 a 86400 segundos.") from None
+    if not 1 <= segundos <= 86400:
+        raise ErroConsulta(f"O tempo de {'consulta manual' if modo == 'manual' else 'lista automática'} deve ficar entre 1 e 86400 segundos.")
+    return segundos
+
+
+def tempos_configuracao(configuracao):
+    return {modo: validar_tempo(configuracao.get("tempos", modo, fallback=str(padrao)), modo)
+            for modo, padrao in TEMPOS_PADRAO.items()}
+
+
+def carregar_tempos(caminho=None):
+    destino = Path(caminho) if caminho is not None else caminho_cache()
+    return tempos_configuracao(ler_configuracao(destino))
+
+
+def salvar_tempos(manual, lista, caminho=None):
+    tempos = {"manual": validar_tempo(manual, "manual"), "lista": validar_tempo(lista, "lista")}
+    destino = Path(caminho) if caminho is not None else caminho_cache()
+    with bloquear_cache(destino):
+        configuracao = ler_configuracao(destino)
+        if not configuracao.has_section("tempos"):
+            configuracao.add_section("tempos")
+        for modo, segundos in tempos.items():
+            configuracao.set("tempos", modo, str(segundos))
+        gravar_configuracao(configuracao, destino)
+    return tempos
+
+
 def historico_ativo(configuracao, agora):
     try:
         horarios = json.loads(configuracao.get("limite", "timestamps", fallback="[]"))
@@ -181,37 +218,45 @@ def historico_ativo(configuracao, agora):
             raise ValueError
         if any(isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(h) or h < 0 for h in horarios):
             raise ValueError
-        return sorted(float(h) for h in horarios if agora - h < INTERVALO_CONSULTAS)
+        # Preserve o último envio mesmo depois de seu intervalo expirar.
+        # Assim um tempo maior pode ser aplicado posteriormente sem perder a referência.
+        return sorted(float(h) for h in horarios)[-1:]
     except (ValueError, TypeError, configparser.Error):
         raise ErroConsulta("O histórico de consultas do cache.ini é inválido. Confira o arquivo antes de continuar.") from None
 
 
-def espera_historico(horarios, agora):
-    if len(horarios) < MAX_CONSULTAS:
+def espera_historico(horarios, agora, intervalo=INTERVALO_CONSULTAS):
+    if not horarios:
         return 0
-    return max(0, math.ceil(horarios[-MAX_CONSULTAS] + INTERVALO_CONSULTAS - agora))
+    return max(0, math.ceil(horarios[-1] + intervalo - agora))
 
 
-def segundos_ate_liberar(caminho=None, agora=None):
+def segundos_ate_liberar(caminho=None, agora=None, modo="manual"):
     destino = Path(caminho) if caminho is not None else caminho_cache()
     agora = time.time() if agora is None else agora
-    return espera_historico(historico_ativo(ler_configuracao(destino), agora), agora)
+    configuracao = ler_configuracao(destino)
+    if modo not in TEMPOS_PADRAO:
+        raise ErroConsulta("O modo de consulta não é válido.")
+    tempos = tempos_configuracao(configuracao)
+    return espera_historico(historico_ativo(configuracao, agora), agora, tempos[modo])
 
 
-def registrar_consulta(caminho=None, agora=None):
+def registrar_consulta(caminho=None, agora=None, modo="manual"):
     """Persiste a tentativa antes de enviar; não salva o token digitado."""
     destino = Path(caminho) if caminho is not None else caminho_cache()
     with bloquear_cache(destino):
         configuracao = ler_configuracao(destino)
+        if modo not in TEMPOS_PADRAO:
+            raise ErroConsulta("O modo de consulta não é válido.")
+        tempos = tempos_configuracao(configuracao)
         agora = time.time() if agora is None else agora
         horarios = historico_ativo(configuracao, agora)
-        espera = espera_historico(horarios, agora)
+        espera = espera_historico(horarios, agora, tempos[modo])
         if espera:
             raise LimiteConsultas(espera)
-        horarios.append(agora)
         if not configuracao.has_section("limite"):
             configuracao.add_section("limite")
-        configuracao.set("limite", "timestamps", json.dumps(horarios))
+        configuracao.set("limite", "timestamps", json.dumps([agora]))
         gravar_configuracao(configuracao, destino)
 
 
@@ -539,6 +584,8 @@ class Aplicativo:
         self.erro_saida_associada = None
         self.tipo_em_consulta = "CPF"
         self.pendencia_resultado = None
+        self.janela_configuracoes = None
+        self.botao_salvar_config = None
         janela.title("Consultar Pix")
         janela.geometry("720x850")
         janela.minsize(600, 760)
@@ -562,7 +609,10 @@ class Aplicativo:
         conteudo.pack(fill="both", expand=True)
         conteudo.columnconfigure(0, weight=1)
         conteudo.rowconfigure(10, weight=1)
-        ttk.Label(conteudo, text="Consultar Pix", style="Titulo.TLabel").grid(row=0, column=0, sticky="w")
+        cabecalho = ttk.Frame(conteudo)
+        cabecalho.grid(row=0, column=0, sticky="ew")
+        ttk.Label(cabecalho, text="Consultar Pix", style="Titulo.TLabel").pack(side="left")
+        ttk.Button(cabecalho, text="Configurações", command=self.abrir_configuracoes).pack(side="right")
         ttk.Label(conteudo, text="Uma chave por vez", style="Ajuda.TLabel").grid(row=1, column=0, sticky="w", pady=(3, 22))
 
         linha_token = ttk.Frame(conteudo)
@@ -659,7 +709,7 @@ class Aplicativo:
         rolagem = ttk.Scrollbar(quadro, orient="vertical", command=self.lista.yview)
         rolagem.grid(row=0, column=1, sticky="ns")
         self.lista.configure(yscrollcommand=rolagem.set)
-        self.resumo_lista = ttk.Label(self.aba_lista, text="Abra um TXT e clique em Iniciar lista. Uma consulta por vez, com intervalo de 61 segundos.", style="Ajuda.TLabel", wraplength=600)
+        self.resumo_lista = ttk.Label(self.aba_lista, text="Abra um TXT e clique em Iniciar lista. O intervalo pode ser ajustado em Configurações.", style="Ajuda.TLabel", wraplength=600)
         self.resumo_lista.grid(row=2, column=0, sticky="w", pady=(8, 0))
         self.progresso_lista = ttk.Label(self.aba_lista, text="0/0 processadas", style="Ajuda.TLabel")
         self.progresso_lista.grid(row=3, column=0, sticky="w", pady=(4, 0))
@@ -668,6 +718,72 @@ class Aplicativo:
 
     def modo_lista(self):
         return hasattr(self, "abas") and self.abas.select() == str(self.aba_lista)
+
+    def abrir_configuracoes(self):
+        if self.janela_configuracoes is not None and self.janela_configuracoes.winfo_exists():
+            self.janela_configuracoes.lift()
+            self.janela_configuracoes.focus_set()
+            return
+        try:
+            configuracao = ler_configuracao(caminho_cache())
+        except ErroConsulta as erro:
+            self.status.configure(text=str(erro), foreground="#a13d29")
+            return
+        dialogo = tk.Toplevel(self.janela)
+        self.janela_configuracoes = dialogo
+        dialogo.title("Configurações")
+        dialogo.transient(self.janela)
+        dialogo.resizable(False, False)
+        quadro = ttk.Frame(dialogo, padding=20)
+        quadro.pack(fill="both", expand=True)
+        quadro.columnconfigure(1, weight=1)
+        manual = tk.StringVar(value=configuracao.get("tempos", "manual", fallback=str(TEMPOS_PADRAO["manual"])))
+        lista = tk.StringVar(value=configuracao.get("tempos", "lista", fallback=str(TEMPOS_PADRAO["lista"])))
+        ttk.Label(quadro, text="Consulta manual (segundos)").grid(row=0, column=0, sticky="w", padx=(0, 12), pady=(0, 10))
+        campo_manual = ttk.Entry(quadro, textvariable=manual, width=12)
+        campo_manual.grid(row=0, column=1, sticky="ew", pady=(0, 10))
+        ttk.Label(quadro, text="Lista automática (segundos)").grid(row=1, column=0, sticky="w", padx=(0, 12), pady=(0, 12))
+        ttk.Entry(quadro, textvariable=lista, width=12).grid(row=1, column=1, sticky="ew", pady=(0, 12))
+        ttk.Label(quadro, text="Informe números inteiros de 1 a 86400 segundos.\nContagem a partir do último envio, inclusive ao trocar modo.", style="Ajuda.TLabel", wraplength=440).grid(row=2, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        mensagem = ttk.Label(quadro, text="", foreground="#a13d29", wraplength=440)
+        mensagem.grid(row=3, column=0, columnspan=2, sticky="w", pady=(0, 12))
+        try:
+            tempos_configuracao(configuracao)
+        except ErroConsulta as erro:
+            mensagem.configure(text=str(erro))
+
+        def fechar(evento=None):
+            self.janela_configuracoes = None
+            self.botao_salvar_config = None
+            dialogo.destroy()
+            return "break"
+
+        def salvar(evento=None):
+            if self.ocupado:
+                mensagem.configure(text="Aguarde a consulta em andamento terminar antes de salvar os tempos.")
+                return "break"
+            try:
+                salvar_tempos(manual.get(), lista.get())
+            except ErroConsulta as erro:
+                mensagem.configure(text=str(erro))
+                return "break"
+            fechar()
+            self.status.configure(text="Tempos salvos nas configurações.", foreground=COR_SUCESSO_SUAVE)
+            self.atualizar_limite(reagendar=False)
+            if self.lista_ativa:
+                self.agendar_proximo_item()
+            return "break"
+
+        botoes = ttk.Frame(quadro)
+        botoes.grid(row=4, column=0, columnspan=2, sticky="e")
+        ttk.Button(botoes, text="Cancelar", command=fechar).pack(side="left", padx=(0, 8))
+        self.botao_salvar_config = ttk.Button(botoes, text="Salvar", command=salvar,
+                                            state="disabled" if self.ocupado else "normal")
+        self.botao_salvar_config.pack(side="left")
+        dialogo.protocol("WM_DELETE_WINDOW", fechar)
+        dialogo.bind("<Return>", salvar)
+        dialogo.bind("<Escape>", fechar)
+        campo_manual.focus_set()
 
     def abrir_lista(self):
         if self.ocupado or self.importando or self.lista_ativa:
@@ -795,6 +911,8 @@ class Aplicativo:
         self.botao_abrir_lista.configure(state="disabled" if travado or self.importando else "normal")
         self.botao_lista.configure(text="Pausar" if self.lista_ativa else "Iniciar lista",
                                   state="normal" if self.lista_ativa or not self.ocupado and not self.importando else "disabled")
+        if self.botao_salvar_config is not None:
+            self.botao_salvar_config.configure(state="disabled" if self.ocupado else "normal")
         self.atualizar_limite(reagendar=False)
 
     def alternar_lista(self):
@@ -821,7 +939,7 @@ class Aplicativo:
         try:
             self.token_lista = validar_token(self.token.get())
             self.tipo_lista_capturado = TIPOS[self.tipo_lista.get()]
-            segundos_ate_liberar()
+            segundos_ate_liberar(modo="lista")
             self.preparar_saida_lista()
         except (ErroConsulta, KeyError) as erro:
             self.status.configure(text=str(erro) if isinstance(erro, ErroConsulta) else "Selecione o tipo da lista.", foreground="#a13d29")
@@ -857,7 +975,7 @@ class Aplicativo:
             self.status.configure(text="Lista concluída.", foreground=COR_SUCESSO_SUAVE)
             return
         try:
-            segundos = segundos_ate_liberar()
+            segundos = segundos_ate_liberar(modo="lista")
         except ErroConsulta as erro:
             self.pausar_lista("Pausada: não foi possível ler o intervalo")
             self.status.configure(text=str(erro), foreground="#a13d29")
@@ -890,7 +1008,7 @@ class Aplicativo:
             return
         if not self.ocupado:
             try:
-                segundos = segundos_ate_liberar()
+                segundos = segundos_ate_liberar(modo="lista" if self.modo_lista() else "manual")
             except ErroConsulta as erro:
                 self.botao.configure(state="disabled", text="Consultar selecionado" if self.modo_lista() else "Consultar")
                 self.status.configure(text=str(erro), foreground="#a13d29")
@@ -947,7 +1065,7 @@ class Aplicativo:
             validado = True
             if item_lista:
                 self.preparar_saida_lista()
-            registrar_consulta()
+            registrar_consulta(modo="lista" if automatico or item_lista else "manual")
         except LimiteConsultas as erro:
             self.status.configure(text=str(erro), foreground="#775d2b")
             self.atualizar_limite(reagendar=False)
