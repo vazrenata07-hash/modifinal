@@ -1,9 +1,10 @@
-name: UniTV - ID por instalacao (experimental)
+name: UniTV - correcao de heartbeat e reconexao
 on:
   push:
     paths:
       - '.github/workflows/unitv-id-unico.yml'
       - 'unitv/**'
+      - 'unitv-session/**'
   workflow_dispatch:
 permissions:
   contents: write
@@ -36,6 +37,7 @@ jobs:
         run: |
           java -jar work/apktool.jar d -r -f work/original.apk -o work/decoded
           (cd work/decoded && patch -p1 < ../../unitv/alteracoes-id-unico.patch)
+          (cd work/decoded && patch -p1 < ../../unitv-session/alteracoes-sessao.patch)
           java -jar work/apktool.jar b work/decoded -o work/rebuilt.apk
           python3 - <<'PY'
           from pathlib import Path
@@ -52,11 +54,11 @@ jobs:
         run: |
           java -jar work/signer.jar -a work/id-unico-unsigned.apk -o work/signed
           mkdir -p work/release
-          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-ID-unico-experimental.apk
-          cp unitv/LEIA-ME-ID-unico.txt unitv/alteracoes-id-unico.patch work/release/
-          (cd work/release && sha256sum *.apk > SHA256-ID-unico.txt)
+          cp work/signed/id-unico-aligned-debugSigned.apk work/release/UniTV-5.9.0-sessao-reconexao.apk
+          cp unitv-session/LEIA-ME-sessao.txt unitv-session/alteracoes-sessao.patch work/release/
+          (cd work/release && sha256sum *.apk > SHA256-sessao.txt)
       - name: Publicar na release indicada pelo usuario
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-ID-unico-experimental.apk work/release/LEIA-ME-ID-unico.txt work/release/alteracoes-id-unico.patch work/release/SHA256-ID-unico.txt --repo "$GITHUB_REPOSITORY" --clobber
+          gh release upload 1.0.0.1 work/release/UniTV-5.9.0-sessao-reconexao.apk work/release/LEIA-ME-sessao.txt work/release/alteracoes-sessao.patch work/release/SHA256-sessao.txt --repo "$GITHUB_REPOSITORY" --clobber
