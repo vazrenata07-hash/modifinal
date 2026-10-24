@@ -1,0 +1,80 @@
+--- a/smali/xc/a1$c.smali
++++ b/smali/xc/a1$c.smali
+@@ -247,6 +247,22 @@
+     .line 7
+     .line 8
+     invoke-super {p0, p1}, Ltc/a;->onError(Ljava/lang/Throwable;)V
++    invoke-static {p1}, Lcom/interactive/brasiliptv/app/SessionTrace;->error(Ljava/lang/Throwable;)V
++
++    instance-of v0, p1, Ljava/io/IOException;
++    if-nez v0, :transient_network
++    instance-of v0, p1, Ljava/util/concurrent/TimeoutException;
++    if-eqz v0, :original_error
++
++    :transient_network
++    iget-object v0, p0, Lxc/a1$c;->d:Lxc/a1;
++    const/4 v1, 0x0
++    const-wide/16 v2, 0x1e
++    invoke-virtual {v0, v1, v2, v3}, Lxc/a1;->g(ZJ)V
++    return-void
++
++    :original_error
++
+ 
+     .line 9
+     .line 10
+--- a/smali/com/module/basemvp/a.smali
++++ b/smali/com/module/basemvp/a.smali
+@@ -1484,6 +1484,8 @@
+     .line 13
+     invoke-static {v8, v2}, Lkotlin/jvm/internal/k;->f(Ljava/lang/Object;Ljava/lang/String;)V
+ 
++    invoke-static {v8}, Lcom/interactive/brasiliptv/app/SessionTrace;->playbackCode(Ljava/lang/String;)V
++
+     .line 14
+     .line 15
+     const-string/jumbo v2, "uri"
+--- /dev/null
++++ b/smali/com/interactive/brasiliptv/app/SessionTrace.smali
+@@ -0,0 +1,41 @@
++.class public final Lcom/interactive/brasiliptv/app/SessionTrace;
++.super Ljava/lang/Object;
++
++.method public static error(Ljava/lang/Throwable;)V
++    .locals 3
++    const-string v0, "UniTVSession"
++    instance-of v1, p0, Lcore/request/converterFactory/bean/ResultException;
++    if-eqz v1, :network
++    check-cast p0, Lcore/request/converterFactory/bean/ResultException;
++    invoke-virtual {p0}, Lcore/request/converterFactory/bean/ResultException;->getReturnCode()Ljava/lang/String;
++    move-result-object v1
++    const-string v2, "heartbeat server_code="
++    invoke-static {v1}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
++    move-result-object v1
++    invoke-virtual {v2, v1}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v1
++    goto :write
++    :network
++    invoke-virtual {p0}, Ljava/lang/Object;->getClass()Ljava/lang/Class;
++    move-result-object v1
++    invoke-virtual {v1}, Ljava/lang/Class;->getName()Ljava/lang/String;
++    move-result-object v1
++    const-string v2, "heartbeat exception_type="
++    invoke-virtual {v2, v1}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v1
++    :write
++    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
++    return-void
++.end method
++
++.method public static playbackCode(Ljava/lang/String;)V
++    .locals 2
++    const-string v0, "UniTVSession"
++    const-string v1, "playback server_code="
++    invoke-static {p0}, Ljava/lang/String;->valueOf(Ljava/lang/Object;)Ljava/lang/String;
++    move-result-object p0
++    invoke-virtual {v1, p0}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v1
++    invoke-static {v0, v1}, Landroid/util/Log;->i(Ljava/lang/String;Ljava/lang/String;)I
++    return-void
++.end method
