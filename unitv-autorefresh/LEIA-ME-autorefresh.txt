@@ -3,6 +3,7 @@ Base: APK inicial da release 1.0.0.1, mais checagem-local.patch e validade-local
 A versao anterior sem esta recuperacao permanece publicada separadamente.
 
 Funcionamento implementado:
+- O evento interno de login remoto e as rejeicoes de sessao do heartbeat tambem podem iniciar a mesma recuperacao, sem aguardar outra consulta do usuario.
 - Intercepta somente consultas de catalogo e inicio de VOD da lista explicita SilentRefresh.READS.
 - Para aaa100027, aaa100028, aaa100083 ou portal100054, tanto em ResultException quanto em retorno estruturado, solicita uma nova autenticacao pelo mesmo caminho interno usado na inicializacao do app.
 - Nao inicia uma Activity. Reutiliza as credenciais/configuracao existentes e permite que a rotina original receba e armazene o resultado real do servidor.
