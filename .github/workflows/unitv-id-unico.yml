@@ -1,17 +1,15 @@
 name: UniTV - alternativa com recuperacao automatica
 on:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/unitv-id-unico.yml'
-      - 'unitv-local/**'
-      - 'unitv-expiry/**'
-      - 'unitv-autorefresh/**'
   workflow_dispatch:
 permissions:
   contents: write
 concurrency:
   group: unitv-id-unico-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   package:
     runs-on: ubuntu-latest
