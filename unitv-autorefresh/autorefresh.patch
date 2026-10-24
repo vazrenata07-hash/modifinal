@@ -1,0 +1,61 @@
+--- a/smali/yb/h.smali
++++ b/smali/yb/h.smali
+@@ -4270,3 +4270,16 @@
+     .line 55
+     return-void
+ .end method
++
++.method public final refreshSilently(Lyb/h$a;)V
++    .locals 2
++    sget-object v0, Lyb/h;->x:Ljava/util/List;
++    invoke-interface {v0, p1}, Ljava/util/List;->add(Ljava/lang/Object;)Z
++    const/4 v1, 0x0
++    sput v1, Lyb/h;->e:I
++    const-string v1, ""
++    sput-object v1, Lyb/h;->c:Ljava/lang/String;
++    sput-object v1, Lyb/h;->l:Ljava/lang/String;
++    invoke-direct {p0}, Lyb/h;->b1()V
++    return-void
++.end method
+--- a/smali_classes2/ze/c.smali
++++ b/smali_classes2/ze/c.smali
+@@ -362,7 +362,8 @@
+ 
+ # virtual methods
+ .method public final a(Ljava/lang/Object;Lio/reactivex/functions/Function;Ljava/lang/String;)Lio/reactivex/Observable;
+-    .locals 1
++    .locals 2
++    move-object v1, p1
+ 
+     .line 1
+     .line 2
+@@ -397,6 +398,9 @@
+ 
+     .line 18
+     move-result-object p1
++    invoke-static {p1, v1, p2}, Lcom/interactive/brasiliptv/app/SilentRefresh;->wrap(Lio/reactivex/Observable;Ljava/lang/Object;Lio/reactivex/functions/Function;)Lio/reactivex/Observable;
++    move-result-object p1
++
+ 
+     .line 19
+     .line 20
+@@ -428,7 +432,8 @@
+ .end method
+ 
+ .method public final b(Ljava/lang/Object;Lio/reactivex/functions/Function;)Lio/reactivex/Observable;
+-    .locals 1
++    .locals 2
++    move-object v1, p1
+ 
+     .line 1
+     .line 2
+@@ -454,6 +459,9 @@
+ 
+     .line 13
+     move-result-object p1
++    invoke-static {p1, v1, p2}, Lcom/interactive/brasiliptv/app/SilentRefresh;->wrap(Lio/reactivex/Observable;Ljava/lang/Object;Lio/reactivex/functions/Function;)Lio/reactivex/Observable;
++    move-result-object p1
++
+ 
+     .line 14
+     .line 15
