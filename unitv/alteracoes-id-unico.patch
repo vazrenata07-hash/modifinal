@@ -1,0 +1,235 @@
+--- a/smali/n3/k.smali
++++ b/smali/n3/k.smali
+@@ -491,56 +491,56 @@
+ .method public static e()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private static f(Landroid/content/Context;)Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private static g()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method public static h(Landroid/content/Context;)Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private static i()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method public static j()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "020000000000"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getCompactMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method public static k(Landroid/content/Context;)Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+--- a/smali/zc/v.smali
++++ b/smali/zc/v.smali
+@@ -3176,24 +3176,24 @@
+ .method private final m()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private final n()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private final q()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+@@ -3256,16 +3256,16 @@
+ .method private final x(Landroid/content/Context;)Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+ .method private final y()Ljava/lang/String;
+     .locals 1
+ 
+-    const-string v0, "02:00:00:00:00:00"
+-
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
+     return-object v0
+ .end method
+ 
+--- a/smali/com/interactive/brasiliptv/app/AppWrapper.smali
++++ b/smali/com/interactive/brasiliptv/app/AppWrapper.smali
+@@ -173,3 +173,10 @@
+     .line 48
+     return-void
+ .end method
++
++.method protected attachBaseContext(Landroid/content/Context;)V
++    .locals 0
++    invoke-static {p1}, Lcom/interactive/brasiliptv/app/InstallIdentity;->init(Landroid/content/Context;)V
++    invoke-super {p0, p1}, Lta/c;->attachBaseContext(Landroid/content/Context;)V
++    return-void
++.end method
+--- /dev/null
++++ b/smali/com/interactive/brasiliptv/app/InstallIdentity.smali
+@@ -0,0 +1,92 @@
++.class public final Lcom/interactive/brasiliptv/app/InstallIdentity;
++.super Ljava/lang/Object;
++
++.field private static mac:Ljava/lang/String;
++
++.method public static declared-synchronized init(Landroid/content/Context;)V
++    .locals 6
++    const-class v5, Lcom/interactive/brasiliptv/app/InstallIdentity;
++    monitor-enter v5
++    :try_start
++    sget-object v0, Lcom/interactive/brasiliptv/app/InstallIdentity;->mac:Ljava/lang/String;
++    if-nez v0, :done
++    const-string v0, "unitv_install_identity_v1"
++    const/4 v1, 0x0
++    invoke-virtual {p0, v0, v1}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
++    move-result-object v0
++    const-string v1, "local_mac"
++    const/4 v2, 0x0
++    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v2
++    if-eqz v2, :generate
++    const-string v3, "02(:[0-9a-f]{2}){5}"
++    invoke-virtual {v2, v3}, Ljava/lang/String;->matches(Ljava/lang/String;)Z
++    move-result v3
++    if-nez v3, :save_memory
++    :generate
++    invoke-static {}, Ljava/util/UUID;->randomUUID()Ljava/util/UUID;
++    move-result-object v2
++    invoke-virtual {v2}, Ljava/util/UUID;->toString()Ljava/lang/String;
++    move-result-object v2
++    const-string v3, "-"
++    const-string v4, ""
++    invoke-virtual {v2, v3, v4}, Ljava/lang/String;->replace(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Ljava/lang/String;
++    move-result-object v2
++    const/4 v3, 0x0
++    const/16 v4, 0xa
++    invoke-virtual {v2, v3, v4}, Ljava/lang/String;->substring(II)Ljava/lang/String;
++    move-result-object v2
++    const-string v3, "(.{2})"
++    const-string v4, ":$1"
++    invoke-virtual {v2, v3, v4}, Ljava/lang/String;->replaceAll(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v2
++    const-string v3, "02"
++    invoke-virtual {v3, v2}, Ljava/lang/String;->concat(Ljava/lang/String;)Ljava/lang/String;
++    move-result-object v2
++    invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
++    move-result-object v0
++    invoke-interface {v0, v1, v2}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
++    move-result-object v0
++    invoke-interface {v0}, Landroid/content/SharedPreferences$Editor;->commit()Z
++    move-result v0
++    if-nez v0, :save_memory
++    new-instance v0, Ljava/lang/IllegalStateException;
++    const-string v1, "Unable to persist installation identity"
++    invoke-direct {v0, v1}, Ljava/lang/IllegalStateException;-><init>(Ljava/lang/String;)V
++    throw v0
++    :save_memory
++    sput-object v2, Lcom/interactive/brasiliptv/app/InstallIdentity;->mac:Ljava/lang/String;
++    :done
++    monitor-exit v5
++    return-void
++    :try_end
++    .catchall {:try_start .. :try_end} :failed
++    :failed
++    move-exception v0
++    monitor-exit v5
++    throw v0
++.end method
++
++.method public static getMac()Ljava/lang/String;
++    .locals 2
++    sget-object v0, Lcom/interactive/brasiliptv/app/InstallIdentity;->mac:Ljava/lang/String;
++    if-nez v0, :ready
++    sget-object v0, Lpc/b;->b:Lpc/b$a;
++    invoke-virtual {v0}, Lpc/b$a;->a()Landroid/content/Context;
++    move-result-object v0
++    invoke-static {v0}, Lcom/interactive/brasiliptv/app/InstallIdentity;->init(Landroid/content/Context;)V
++    sget-object v0, Lcom/interactive/brasiliptv/app/InstallIdentity;->mac:Ljava/lang/String;
++    :ready
++    return-object v0
++.end method
++
++.method public static getCompactMac()Ljava/lang/String;
++    .locals 3
++    invoke-static {}, Lcom/interactive/brasiliptv/app/InstallIdentity;->getMac()Ljava/lang/String;
++    move-result-object v0
++    const-string v1, ":"
++    const-string v2, ""
++    invoke-virtual {v0, v1, v2}, Ljava/lang/String;->replace(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Ljava/lang/String;
++    move-result-object v0
++    return-object v0
++.end method
